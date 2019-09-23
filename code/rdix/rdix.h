@@ -13,11 +13,8 @@ struct RDIXCommand;
 struct RDIXCommandBuffer;
 struct BXIAllocator;
 
-// ---
-struct BXIFilesystem;
-
 // --- Shader
-RDIXShaderFile* LoadShaderFile  ( const char* name, BXIFilesystem* filesystem, BXIAllocator* allocator );
+RDIXShaderFile* LoadShaderFile  ( const char* name, BXIAllocator* allocator );
 RDIXShaderFile* CreateShaderFile( const void* data, uint32_t dataSize );
 void		    UnloadShaderFile( RDIXShaderFile** shaderfile, BXIAllocator* allocator );
 uint32_t		GenerateShaderFileHashedName( const char* name, uint32_t version );

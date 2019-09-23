@@ -5,7 +5,7 @@ struct BXWindow;
 
 struct BXIApplication
 {
-    virtual bool Startup( int argc, const char** argv, BXIAllocator* allocator ) = 0;
+    virtual bool Startup( int argc, const char** argv, BXWindow* win, BXIAllocator* allocator ) = 0;
     virtual void Shutdown( BXIAllocator* allocator ) = 0;
     virtual bool Update( BXWindow* win, unsigned long long deltaTimeUS, BXIAllocator* allocator ) = 0;
 };

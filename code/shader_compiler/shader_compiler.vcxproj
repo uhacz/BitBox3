@@ -74,8 +74,14 @@
     <ProjectReference Include="..\3rd_party\pugixml\pugixml.vcxproj">
       <Project>{cb5bdc22-7f9e-4aa9-a33e-d5c3a8bf7ff1}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\filesystem\filesystem.vcxproj">
+      <Project>{6eca4fda-9944-488c-ab29-a0045344878e}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\foundation\foundation.vcxproj">
       <Project>{81e2ec47-feda-4c4d-a6f7-493c4b92d2ff}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\memory\memory.vcxproj">
+      <Project>{9fb86e9a-ae7f-4295-a36b-0ead0df7d749}</Project>
     </ProjectReference>
     <ProjectReference Include="..\rdix\rdix.vcxproj">
       <Project>{8ec396c6-9853-45a0-94fe-bcfebfe647d4}</Project>

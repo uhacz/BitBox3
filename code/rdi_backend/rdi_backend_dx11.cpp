@@ -1162,6 +1162,8 @@ static inline void releaseSafe( T*& obj )
 
 void Destroy( RDIVertexBuffer* id )
 {
+    releaseSafe( id->viewUA );
+    releaseSafe( id->viewSH );
     releaseSafe( id->buffer );
 }
 void Destroy( RDIIndexBuffer* id )

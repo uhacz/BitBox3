@@ -309,11 +309,11 @@ struct id_array_t
 template <uint32_t MAX, typename Tid = id_t>
 struct id_table_t
 {
-    id_table_t() : _freelist( MAX ) , _next_id( 0 ) , _size( 0 )
+    id_table_t() : _freelist( (u16)MAX ) , _next_id( 0 ) , _size( 0 )
     {
         for( uint32_t i = 0; i < MAX; i++ )
         {
-            _ids[i].id = -1;
+            _ids[i].id = (decltype( _ids[i].id ) )(-1);
         }
     }
 

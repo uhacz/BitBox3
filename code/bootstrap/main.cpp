@@ -8,6 +8,7 @@
 #include <windows.h>
 
 #include <memory/memory.h>
+#include <filesystem/filesystem.h>
 
 #include <window/window_interface.h>
 #include <window/window.h>
@@ -24,7 +25,7 @@ int main( int argc, const char** argv )
     BXWindow* window = window_plug->Create( "BitBox", 1600, 900, false, default_allocator );
 
     BXIApplication* app_plug = CreateApplication( "ride", default_allocator );
-    if( app_plug->Startup( argc, argv, default_allocator ) )
+    if( app_plug->Startup( argc, argv, window, default_allocator ) )
     {
         HWND hwnd = (HWND)window->GetSystemHandle( window );
 

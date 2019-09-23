@@ -2,7 +2,7 @@
 
 #include "rdix_command_buffer.h"
 
-#include <filesystem/filesystem_plugin.h>
+#include <filesystem/filesystem.h>
 #include <memory/memory.h>
 #include <foundation/math/vmath.h>
 #include <foundation/hash.h>
@@ -14,16 +14,14 @@
 
 #include <algorithm>
 
-SRL_TYPE_DEFINE( RDIXMeshFile );
-
 // --- Shader
-RDIXShaderFile* LoadShaderFile( const char* name, BXIFilesystem* filesystem, BXIAllocator* allocator )
+RDIXShaderFile* LoadShaderFile( const char* name, BXIAllocator* allocator )
 {
-	BXFileWaitResult load_result = filesystem->LoadFileSync( filesystem, name, BXEFIleMode::BIN, allocator );
+	BXFileWaitResult load_result = LoadFileSync( name, BXEFIleMode::BIN, allocator );
 	
 	RDIXShaderFile* sfile = CreateShaderFile( load_result.file.pointer, load_result.file.size );
 
-	filesystem->CloseFile( &load_result.handle, false );
+	FileSys()->CloseFile( &load_result.handle, false );
 
 	return sfile;
 }

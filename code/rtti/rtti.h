@@ -1,7 +1,6 @@
 #pragma once
 
 #include "dll_interface.h"
-#include <plugin/plugin_interface.h>
 #include <foundation/type.h>
 #include <foundation/debug.h>
 #include <typeinfo>

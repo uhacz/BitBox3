@@ -1,7 +1,7 @@
 #include "shader_compiler.h"
 #include <memory/memory.h>
 #include <3rd_party/AnyOption/anyoption.h>
-#include "memory/memory_plugin.h"
+#include "memory/memory.h"
 
 #define TEST 0
 
