@@ -17,6 +17,7 @@ RDIIndexBuffer	  CreateIndexBuffer   ( RDIDevice* dev, RDIEType::Enum dataType, 
 RDIConstantBuffer CreateConstantBuffer( RDIDevice* dev, uint32_t sizeInBytes, const void* data = nullptr );
 RDIBufferRO       CreateBufferRO      ( RDIDevice* dev, int numElements, RDIFormat format, unsigned cpuAccessFlag );
 RDIBufferRO       CreateStructuredBufferRO( RDIDevice* dev, uint32_t numElements, uint32_t elementStride, unsigned cpuAccessFlag );
+RDIBufferRO       CreateRawBufferRO   ( RDIDevice* dev, uint32_t size_in_bytes, const void* initial_data, unsigned cpuAccessFlag );
 
 
 RDIShaderPass	  CreateShaderPass	( RDIDevice* dev, const RDIShaderPassCreateInfo& info );

@@ -120,6 +120,10 @@ struct RDIFormat
 	static RDIFormat Float2() { return RDIFormat( RDIEType::FLOAT, 2 ); }
 	static RDIFormat Float3() { return RDIFormat( RDIEType::FLOAT, 3 ); }
 	static RDIFormat Float4() { return RDIFormat( RDIEType::FLOAT, 4 ); }
+    static RDIFormat Uint()  { return RDIFormat( RDIEType::UINT, 1 ); }
+    static RDIFormat Uint2() { return RDIFormat( RDIEType::UINT, 2 ); }
+    static RDIFormat Uint3() { return RDIFormat( RDIEType::UINT, 3 ); }
+    static RDIFormat Uint4() { return RDIFormat( RDIEType::UINT, 4 ); }
 };
 
 

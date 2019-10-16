@@ -75,6 +75,7 @@
     <ClInclude Include="rdix.h" />
     <ClInclude Include="rdix_command_buffer.h" />
     <ClInclude Include="rdix_debug_draw.h" />
+    <ClInclude Include="rdix_shader_interop.h" />
     <ClInclude Include="rdix_type.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

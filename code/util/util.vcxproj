@@ -66,7 +66,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="camera.cpp" />
     <ClCompile Include="file_system_name.cpp" />
+    <ClCompile Include="gfx\gfx_utils.cpp" />
     <ClCompile Include="guid.cpp" />
     <ClCompile Include="par_shapes\par_shapes.cpp" />
     <ClCompile Include="poly_shape\poly_shape.cpp" />
@@ -84,8 +86,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="bbox.h" />
+    <ClInclude Include="camera.h" />
     <ClInclude Include="color.h" />
     <ClInclude Include="file_system_name.h" />
+    <ClInclude Include="gfx\gfx_utils.h" />
     <ClInclude Include="grid.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="par_shapes\par_shapes.h" />

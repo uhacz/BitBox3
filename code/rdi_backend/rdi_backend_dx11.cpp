@@ -14,10 +14,10 @@ void StartupDX11( RDIDevice** dev, RDICommandQueue** cmdq, uintptr_t hWnd, int w
 {
     DXGI_SWAP_CHAIN_DESC sd;
     ZeroMemory( &sd, sizeof( sd ) );
-    sd.BufferCount = 1;
+    sd.BufferCount = 2;
     sd.BufferDesc.Width = winWidth;
     sd.BufferDesc.Height = winHeight;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     sd.BufferDesc.RefreshRate.Numerator = 60;
     sd.BufferDesc.RefreshRate.Denominator = 1;
     sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
@@ -25,7 +25,7 @@ void StartupDX11( RDIDevice** dev, RDICommandQueue** cmdq, uintptr_t hWnd, int w
     sd.SampleDesc.Count = 1;
     sd.SampleDesc.Quality = 0;
     sd.Windowed = ( fullScreen ) ? FALSE : TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+    sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
 
     UINT flags = 0;//D3D11_CREATE_DEVICE_SINGLETHREADED;
@@ -606,6 +606,65 @@ RDIBufferRO CreateStructuredBufferRO( RDIDevice* dev, uint32_t numElements, uint
     b.sizeInBytes = bdesc.ByteWidth;
     b.format = {};
     b.elementStride = elementStride;
+    return b;
+}
+
+RDIBufferRO CreateRawBufferRO( RDIDevice* dev, uint32_t size_in_bytes, const void* initial_data, unsigned cpuAccessFlag )
+{
+    const uint32_t dxBindFlags = D3D11_BIND_SHADER_RESOURCE;
+    const uint32_t dxCpuAccessFlag = to_D3D11_CPU_ACCESS_FLAG( cpuAccessFlag );
+
+    D3D11_USAGE dxUsage = D3D11_USAGE_DEFAULT;
+    if( cpuAccessFlag & RDIECpuAccess::WRITE )
+    {
+        dxUsage = D3D11_USAGE_DYNAMIC;
+    }
+
+    SYS_ASSERT( size_in_bytes > 0 );
+
+    D3D11_BUFFER_DESC bdesc;
+    memset( &bdesc, 0, sizeof( bdesc ) );
+    bdesc.ByteWidth = size_in_bytes;
+    bdesc.Usage = dxUsage;
+    bdesc.BindFlags = dxBindFlags;
+    bdesc.CPUAccessFlags = dxCpuAccessFlag;
+    bdesc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+    bdesc.StructureByteStride = 0;
+
+    D3D11_SUBRESOURCE_DATA resourceData;
+    resourceData.pSysMem = initial_data;
+    resourceData.SysMemPitch = 0;
+    resourceData.SysMemSlicePitch = 0;
+
+    D3D11_SUBRESOURCE_DATA* resourceDataPointer = (initial_data) ? &resourceData : 0;
+
+    ID3D11Buffer* buffer = 0;
+    HRESULT hres = dev->dx11()->CreateBuffer( &bdesc, resourceDataPointer, &buffer );
+    SYS_ASSERT( SUCCEEDED( hres ) );
+
+    ID3D11ShaderResourceView* viewSH = 0;
+
+    if( bdesc.BindFlags & D3D11_BIND_SHADER_RESOURCE )
+    {
+        D3D11_SHADER_RESOURCE_VIEW_DESC descSH;
+        memset( &descSH, 0x00, sizeof( D3D11_SHADER_RESOURCE_VIEW_DESC ) );
+
+        descSH.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+        descSH.BufferEx.FirstElement = 0;
+        descSH.Format = DXGI_FORMAT_R32_TYPELESS;
+        descSH.BufferEx.NumElements = size_in_bytes / 4;
+        descSH.BufferEx.Flags |= D3D11_BUFFEREX_SRV_FLAG_RAW;
+
+        hres = dev->dx11()->CreateShaderResourceView( buffer, &descSH, &viewSH );
+        SYS_ASSERT( SUCCEEDED( hres ) );
+    }
+
+    RDIBufferRO b;
+    b.buffer = buffer;
+    b.viewSH = viewSH;
+    b.sizeInBytes = bdesc.ByteWidth;
+    b.format = {};
+    b.elementStride = 8;
     return b;
 }
 

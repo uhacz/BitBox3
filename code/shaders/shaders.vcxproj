@@ -96,6 +96,7 @@
     <ClInclude Include="hlsl\shadow_data.h" />
     <ClInclude Include="hlsl\skinning.h" />
     <ClInclude Include="hlsl\transform_instance_data.h" />
+    <ClInclude Include="hlsl\vertex_layout.h" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="hlsl\texture_util.hlsl">

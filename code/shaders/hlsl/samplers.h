@@ -11,10 +11,10 @@ SamplerState _samp_trilinear : register(s3);
 
 struct ShaderSamplers
 {
-	RDISampler _point;
-	RDISampler _linear;
-	RDISampler _bilinear;
-	RDISampler _trilinear;
+	RDISampler point;
+	RDISampler linear;
+	RDISampler bilinear;
+	RDISampler trilinear;
 };
 
 #endif

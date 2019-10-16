@@ -33,6 +33,47 @@ union float4_t
 	float4_t( const float3_t xyz, f32 vw ) : x( xyz.x ), y( xyz.y ), z( xyz.z ), w( vw ) {}
 };
 
+union u32x2
+{
+    struct
+    {
+        u32 x, y;
+    };
+    u32 xy[2];
+    
+    u32x2() {}
+    u32x2( u32 all ) : x( all ), y( all ) {}
+    u32x2( u32 a, u32 b ) : x( a ), y( b ) {}
+};
+
+union u32x3
+{
+    struct
+    {
+        u32 x, y, z;
+    };
+    u32 xyz[3];
+
+    u32x3() {}
+    u32x3( u32 all ) : x( all ), y( all ), z( all ) {}
+    u32x3( u32 a, u32 b, u32 c ) : x( a ), y( b ), z( c ) {}
+};
+union u32x4
+{
+    struct
+    {
+        u32 x, y, z, w;
+    };
+    u32 xyzw[4];
+
+    u32x4() {}
+    u32x4( u32 all ) : x( all ), y( all ), z(all), w(all) {}
+    u32x4( u32 a, u32 b, u32 c, u32 d ) : x( a ), y( b ), z(c), w(d) {}
+
+    u32& operator[]( u32 idx ) { return xyzw[idx]; }
+    const u32& operator[]( u32 idx ) const { return xyzw[idx]; }
+};
+
 union int32x2_t
 {
 	struct

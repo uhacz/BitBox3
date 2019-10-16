@@ -38,5 +38,8 @@
     <ClInclude Include="rdix_debug_draw.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="rdix_shader_interop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

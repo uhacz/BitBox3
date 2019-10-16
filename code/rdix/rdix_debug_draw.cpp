@@ -10,6 +10,12 @@
 #include <algorithm>
 #include "util/range_splitter.h"
 
+#include "rdix_shader_interop.h"
+namespace shader
+{
+#include <shaders/hlsl/vertex_layout.h>
+}//
+
 namespace RDIXDebug
 {
 struct Vertex
@@ -43,6 +49,7 @@ enum EDrawRange : uint32_t
 {
     DRAW_RANGE_BOX = 0,
     DRAW_RANGE_SHERE,
+    DRAW_RANGE_COUNT,
 };
 
 enum ERSource : uint32_t
@@ -171,7 +178,16 @@ struct Data
 
     RDIConstantBuffer cbuffer_mdata;
     RDIConstantBuffer cbuffer_idata;
+    RDIConstantBuffer cbuffer_vdata;
+    RDIConstantBuffer cbuffer_draw_range;
+
     RDIBufferRO       buffer_matrices;
+    RDIBufferRO       buffer_vertices;
+
+    RDIBufferRO       buffer_mesh_vertices;
+    RDIBufferRO       buffer_mesh_indices;
+
+    RDIXRenderSourceRange obj_draw_range[DRAW_RANGE_COUNT];
     
     Array<mat44_t> instance_buffer;
     Array<Vertex>  vertex_buffer;
@@ -238,6 +254,12 @@ void StartUp( RDIDevice* dev, BXIAllocator* allocator )
 
         g_data.rsource[RSOURCE_OBJ] = CreateRenderSource( dev, desc, allocator );
 
+        g_data.obj_draw_range[DRAW_RANGE_BOX] = draw_ranges[DRAW_RANGE_BOX];
+        g_data.obj_draw_range[DRAW_RANGE_SHERE] = draw_ranges[DRAW_RANGE_SHERE];
+
+        g_data.buffer_mesh_vertices = CreateRawBufferRO( dev, nb_vertices * pos_stride, positions, 0 );
+        g_data.buffer_mesh_indices = CreateRawBufferRO( dev, nb_indices * index_stride, indices, 0 );
+
         BX_FREE0( allocator, indices );
         BX_FREE0( allocator, positions );
 
@@ -254,9 +276,13 @@ void StartUp( RDIDevice* dev, BXIAllocator* allocator )
     }
 
     {// constant buffer
-        g_data.cbuffer_mdata = CreateConstantBuffer( dev, sizeof( MaterialData ) );
-        g_data.cbuffer_idata = CreateConstantBuffer( dev, sizeof( InstanceData ) );
-        g_data.buffer_matrices = CreateStructuredBufferRO( dev, GPU_MATRIX_BUFFER_CAPACITY, sizeof( mat44_t ), RDIECpuAccess::WRITE );
+        g_data.cbuffer_mdata      = CreateConstantBuffer( dev, sizeof( MaterialData ) );
+        g_data.cbuffer_idata      = CreateConstantBuffer( dev, sizeof( InstanceData ) );
+        g_data.cbuffer_vdata      = CreateConstantBuffer( dev, sizeof( shader::VertexLayout ) );
+        g_data.cbuffer_draw_range = CreateConstantBuffer( dev, sizeof( shader::DrawRange ) );
+        g_data.buffer_matrices    = CreateStructuredBufferRO( dev, GPU_MATRIX_BUFFER_CAPACITY, sizeof( mat44_t ), RDIECpuAccess::WRITE );
+        g_data.buffer_vertices    = CreateRawBufferRO( dev, sizeof( Vertex ) * GPU_LINE_VBUFFER_CAPACITY, nullptr, RDIECpuAccess::WRITE );
+
     }
 
     {// shader
@@ -281,6 +307,36 @@ void StartUp( RDIDevice* dev, BXIAllocator* allocator )
             if( index != UINT32_MAX )
             {
                 SetConstantBufferByIndex( binding, index, &g_data.cbuffer_idata );
+            }
+
+            index = FindResource( binding, "VertexLayoutCB" );
+            if( index != UINT32_MAX )
+            {
+                SetConstantBufferByIndex( binding, index, &g_data.cbuffer_vdata );
+            }
+
+            index = FindResource( binding, "DrawRangeCB" );
+            if( index != UINT32_MAX )
+            {
+                SetConstantBufferByIndex( binding, index, &g_data.cbuffer_draw_range );
+            }
+
+            index = FindResource( binding, "g_vertex_data" );
+            if( index != UINT32_MAX )
+            {
+                SetResourceROByIndex( binding, index, &g_data.buffer_vertices );
+            }
+
+            index = FindResource( binding, "g_mesh_vertex_data" );
+            if( index != UINT32_MAX )
+            {
+                SetResourceROByIndex( binding, index, &g_data.buffer_mesh_vertices );
+            }
+
+            index = FindResource( binding, "g_mesh_index_data" );
+            if( index != UINT32_MAX )
+            {
+                SetResourceROByIndex( binding, index, &g_data.buffer_mesh_indices );
             }
 
             index = FindResource( binding, "g_matrices" );
@@ -309,7 +365,11 @@ void ShutDown( RDIDevice* dev )
     }
 
     {
+        ::Destroy( &g_data.buffer_mesh_indices );
+        ::Destroy( &g_data.buffer_mesh_vertices );
+        ::Destroy( &g_data.buffer_vertices );
         ::Destroy( &g_data.buffer_matrices );
+        ::Destroy( &g_data.cbuffer_vdata );
         ::Destroy( &g_data.cbuffer_idata );
         ::Destroy( &g_data.cbuffer_mdata );
     }
@@ -470,6 +530,11 @@ void AddAxes( const mat44_t& pose, const RDIXDebugParams& params )
     AddLine( p, p + r.c2 * params.scale, params_copy );
 }
 
+struct VertexLayoutBuilder
+{
+    
+};
+
 void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
 {
     if( g_data.cmd_lines.Empty() && g_data.cmd_objects.Empty() )
@@ -482,7 +547,15 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
     InstanceData idata = {};
     UpdateCBuffer( cmdq, g_data.cbuffer_idata, &idata );
 
+    
+
     {
+        shader::VertexLayout vlayout;
+        memset( &vlayout, 0x00, sizeof( shader::VertexLayout ) );
+        shader::VertexStream* vstream = shader::AddStream( &vlayout );
+        shader::AddAttrib( vstream, RDIFormat::Float3() );
+        UpdateCBuffer( cmdq, g_data.cbuffer_vdata, &vlayout );
+
         const uint32_t nb_objects = g_data.cmd_objects.Size();
         RangeSplitter splitter = RangeSplitter::SplitByGrab( nb_objects, GPU_MATRIX_BUFFER_CAPACITY );
         while( splitter.ElementsLeft() )
@@ -509,71 +582,133 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
                 idata.instance_batch_offset = i;
                 UpdateCBuffer( cmdq, g_data.cbuffer_idata, &idata );
 
+                const RDIXRenderSourceRange range = g_data.obj_draw_range[cmd.rsource_range_index];
+                shader::DrawRange draw_range;
+                draw_range.begin = range.begin;
+                draw_range.count = range.count;
+                draw_range.base_vertex = range.base_vertex;
+                draw_range.stride = sizeof( uint32_t );
+                UpdateCBuffer( cmdq, g_data.cbuffer_draw_range, &draw_range );
+
                 RDIXPipeline* pipeline = g_data.pipeline[cmd.pipeline_index];
                 RDIXRenderSource* rsource = g_data.rsource[cmd.rsource_index];
 
                 BindPipeline( cmdq, pipeline, true );
-                BindRenderSource( cmdq, rsource );
-                SubmitRenderSourceInstanced( cmdq, rsource, 1, cmd.rsource_range_index );
+                SetTopology( cmdq, RDIETopology::TRIANGLES );
+                DrawInstanced( cmdq, draw_range.count, 0, 1 );
+                //BindRenderSource( cmdq, rsource );
+                //SubmitRenderSourceInstanced( cmdq, rsource, 1, cmd.rsource_range_index );
             }
         }
     }
     
     if( !g_data.cmd_lines.Empty() )
     {
-        RDIVertexBuffer dst_vbuffer = VertexBuffer( g_data.rsource[RSOURCE_LINES], 0 );
+        shader::VertexLayout vlayout;
+        memset( &vlayout, 0x00, sizeof( shader::VertexLayout ) );
+        shader::VertexStream* vstream = shader::AddStream( &vlayout );
+        shader::AddAttrib( vstream, RDIFormat::Float3() );
+        shader::AddAttrib( vstream, RDIFormat::Uint() );
+        UpdateCBuffer( cmdq, g_data.cbuffer_vdata, &vlayout );
+
         std::sort( g_data.cmd_lines.begin(), g_data.cmd_lines.end(), std::less<Cmd>() );
-        
+        const u32 nb_cmd = g_data.cmd_lines.Size();
 
-        
-        Vertex* mapped_data = (Vertex*)Map( cmdq, dst_vbuffer, 0, GPU_LINE_VBUFFER_CAPACITY, RDIEMapType::WRITE );
         uint32_t current_pipeline_index = g_data.cmd_lines[0].pipeline_index;
-        RDIXRenderSourceRange draw_range;
-        draw_range.topology = RDIETopology::LINES;
-        draw_range.begin = 0;
-        draw_range.count = 0;
-        draw_range.base_vertex = 0;
-
-        BindRenderSource( cmdq, g_data.rsource[RSOURCE_LINES] );
         BindPipeline( cmdq, g_data.pipeline[current_pipeline_index], true );
+        SetTopology( cmdq, RDIETopology::LINES );
+        Vertex* mapped_data = (Vertex*)Map( cmdq, g_data.buffer_vertices, RDIEMapType::WRITE );
 
-        const uint32_t nb_lines = g_data.cmd_lines.Size();
-        for( uint32_t i = 0; i < nb_lines; ++i )
+        u32 nb_vertices = 0;
+        for( u32 icmd = 0; icmd < nb_cmd; ++icmd )
         {
-            const Cmd& cmd = g_data.cmd_lines[i];
+            const Cmd& cmd = g_data.cmd_lines[icmd];
             const Vertex* cmd_data = &g_data.vertex_buffer[cmd.data_offset];
 
-            const bool vertex_overflow = (draw_range.count + cmd.data_count > GPU_LINE_VBUFFER_CAPACITY);
+            const bool vertex_overflow = (nb_vertices + cmd.data_count > GPU_LINE_VBUFFER_CAPACITY);
             const bool pipeline_mismatch = current_pipeline_index != cmd.pipeline_index;
 
             if( vertex_overflow || pipeline_mismatch )
             {
-                Unmap( cmdq, dst_vbuffer );
-                SubmitRenderSource( cmdq, g_data.rsource[RSOURCE_LINES], draw_range );
+                Unmap( cmdq, g_data.buffer_vertices );
+                Draw( cmdq, nb_vertices, 0 );
 
-                mapped_data = (Vertex*)Map( cmdq, dst_vbuffer, 0, GPU_LINE_VBUFFER_CAPACITY, RDIEMapType::WRITE );
-                draw_range.count = 0;
+                mapped_data = (Vertex*)Map( cmdq, g_data.buffer_vertices, RDIEMapType::WRITE );
+                nb_vertices = 0;
 
                 if( pipeline_mismatch )
                 {
                     BindPipeline( cmdq, g_data.pipeline[cmd.pipeline_index], true );
+                    SetTopology( cmdq, RDIETopology::LINES );
                     current_pipeline_index = cmd.pipeline_index;
                 }
             }
 
-            Vertex* vertices = mapped_data + draw_range.count;
+            Vertex* vertices = mapped_data + nb_vertices;
             for( uint32_t i = 0; i < cmd.data_count; ++i )
             {
                 vertices[i] = g_data.vertex_buffer[cmd.data_offset + i];
             }
-            draw_range.count += cmd.data_count;
+            nb_vertices += cmd.data_count;
+
         }
 
-        if( draw_range.count )
+        Unmap( cmdq, g_data.buffer_vertices );
+        if( nb_vertices )
         {
-            Unmap( cmdq, dst_vbuffer );
-            SubmitRenderSource( cmdq, g_data.rsource[RSOURCE_LINES], draw_range );
+            Draw( cmdq, nb_vertices, 0 );
         }
+
+        //RDIVertexBuffer dst_vbuffer = VertexBuffer( g_data.rsource[RSOURCE_LINES], 0 );
+        //
+        //Vertex* mapped_data = (Vertex*)Map( cmdq, dst_vbuffer, 0, GPU_LINE_VBUFFER_CAPACITY, RDIEMapType::WRITE );
+        //uint32_t current_pipeline_index = g_data.cmd_lines[0].pipeline_index;
+        //RDIXRenderSourceRange draw_range;
+        //draw_range.topology = RDIETopology::LINES;
+        //draw_range.begin = 0;
+        //draw_range.count = 0;
+        //draw_range.base_vertex = 0;
+
+        //BindRenderSource( cmdq, g_data.rsource[RSOURCE_LINES] );
+        //BindPipeline( cmdq, g_data.pipeline[current_pipeline_index], true );
+
+        //const uint32_t nb_lines = g_data.cmd_lines.Size();
+        //for( uint32_t i = 0; i < nb_lines; ++i )
+        //{
+        //    const Cmd& cmd = g_data.cmd_lines[i];
+        //    const Vertex* cmd_data = &g_data.vertex_buffer[cmd.data_offset];
+
+        //    const bool vertex_overflow = (draw_range.count + cmd.data_count > GPU_LINE_VBUFFER_CAPACITY);
+        //    const bool pipeline_mismatch = current_pipeline_index != cmd.pipeline_index;
+
+        //    if( vertex_overflow || pipeline_mismatch )
+        //    {
+        //        Unmap( cmdq, dst_vbuffer );
+        //        SubmitRenderSource( cmdq, g_data.rsource[RSOURCE_LINES], draw_range );
+
+        //        mapped_data = (Vertex*)Map( cmdq, dst_vbuffer, 0, GPU_LINE_VBUFFER_CAPACITY, RDIEMapType::WRITE );
+        //        draw_range.count = 0;
+
+        //        if( pipeline_mismatch )
+        //        {
+        //            BindPipeline( cmdq, g_data.pipeline[cmd.pipeline_index], true );
+        //            current_pipeline_index = cmd.pipeline_index;
+        //        }
+        //    }
+
+        //    Vertex* vertices = mapped_data + draw_range.count;
+        //    for( uint32_t i = 0; i < cmd.data_count; ++i )
+        //    {
+        //        vertices[i] = g_data.vertex_buffer[cmd.data_offset + i];
+        //    }
+        //    draw_range.count += cmd.data_count;
+        //}
+
+        //if( draw_range.count )
+        //{
+        //    Unmap( cmdq, dst_vbuffer );
+        //    SubmitRenderSource( cmdq, g_data.rsource[RSOURCE_LINES], draw_range );
+        //}
 
         //RangeSplitter splitter = RangeSplitter::SplitByGrab( nb_lines, GPU_LINE_VBUFFER_CAPACITY/2 );
         //while( splitter.ElementsLeft() )
