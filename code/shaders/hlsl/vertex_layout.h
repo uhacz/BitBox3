@@ -56,7 +56,7 @@ uint VertexOffset( in VertexStream stream, in uint attrib_index, in uint vertex_
 #define VertexLoad4F( stream_desc, attrib_index, vindex, vstream ) VertexLoadNF( 4, stream_desc, attrib_index, vindex, vstream )
 
 
-#define LoadVertexIndex( draw_range, index, istream ) ( istream.Load( ( index + draw_range.begin ) * draw_range.stride ) + 24 )
+#define LoadVertexIndex( draw_range, index, istream ) ( istream.Load( ( index + draw_range.begin ) * draw_range.stride ) + draw_range.base_vertex )
 
 #else
 inline bool AddAttrib( VertexStream* stream, RDIFormat format )

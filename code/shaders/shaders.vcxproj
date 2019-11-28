@@ -92,6 +92,7 @@
     </CustomBuild>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="hlsl\view_data.h" />
     <ClInclude Include="hlsl\material_data.h" />
     <ClInclude Include="hlsl\shadow_data.h" />
     <ClInclude Include="hlsl\skinning.h" />
@@ -118,6 +119,11 @@
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="hlsl\skinning.hlsl">
+      <FileType>Document</FileType>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="hlsl\basic.hlsl">
       <FileType>Document</FileType>
     </CustomBuild>
   </ItemGroup>

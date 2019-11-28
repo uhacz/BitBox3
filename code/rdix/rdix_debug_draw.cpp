@@ -5,6 +5,9 @@
 #include <util/poly_shape/poly_shape.h>
 #include <resource_manager/resource_manager.h>
 #include <rdi_backend/rdi_backend.h>
+#include "container_allocator.h"
+#include "eastl/hash_map.h"
+
 
 #include <atomic>
 #include <algorithm>
@@ -28,21 +31,24 @@ struct Cmd
 {
     uint32_t data_offset;
     uint32_t data_count; // depends of cmd type (ex. number of instances, or number of vertices)
+    
     union
     {
-        uint32_t key;
+        uint64_t keyLo;
+        uint64_t keyHi;
         struct  
         {
-            uint32_t pipeline_index : 8;
-            uint32_t rsource_range_index : 4;
-            uint32_t rsource_index : 4;
-            uint32_t depth : 16;
+            uint64_t pipeline_index : 16;
+            uint64_t hw_state : 64;
+            uint64_t rsource_range_index : 8;
+            uint64_t rsource_index : 8;
+            uint64_t depth : 32;
         };
     };
 };
 inline bool operator < ( const Cmd& a, const Cmd& b )
 {
-    return a.key < b.key;
+    return (a.keyHi == b.keyHi) ? a.keyLo < b.keyLo : a.keyHi < b.keyHi;
 }
 
 enum EDrawRange : uint32_t
@@ -87,7 +93,7 @@ static inline EPipeline SelectPipeline( const RDIXDebugParams& params, ERSource 
         }
     };
 
-    return router[rsource_type][params.use_depth][params.is_solid];
+    return router[rsource_type][0][0];
 }
 
 static constexpr uint32_t INITIAL_INSTANCE_CAPACITY = 128;
@@ -189,6 +195,9 @@ struct Data
 
     RDIXRenderSourceRange obj_draw_range[DRAW_RANGE_COUNT];
     
+    using HwStateMap = eastl::hash_map<u64, RDIHardwareState, eastl::hash<u64>, eastl::equal_to<u64>, bx_container_allocator>;
+    HwStateMap hw_state_map;
+
     Array<mat44_t> instance_buffer;
     Array<Vertex>  vertex_buffer;
 
@@ -214,6 +223,22 @@ namespace
         RDIXPipelineDesc pipeline_desc( shader_file, pass_name );
         return CreatePipeline( dev, pipeline_desc, allocator );
     }
+
+    RDIHardwareState AcquireHardwareState( RDIDevice* dev, Data* data, const RDIHardwareStateDesc& desc )
+    {
+        auto it = data->hw_state_map.find( desc.hash );
+        if( it == data->hw_state_map.end() )
+        {
+            RDIHardwareState hw_state = CreateHardwareState( dev, desc );
+            data->hw_state_map[desc.hash] = hw_state;
+            return hw_state;
+        }
+        else
+        {
+            return it->second;
+        }
+    }
+
 }//
 
 static Data g_data = {};
@@ -354,6 +379,12 @@ void StartUp( RDIDevice* dev, BXIAllocator* allocator )
 }
 void ShutDown( RDIDevice* dev )
 {
+    for( auto it = g_data.hw_state_map.begin(); it != g_data.hw_state_map.end(); ++it )
+    {
+        ::Destroy( &it->second );
+    }
+    g_data.hw_state_map.clear();
+
     g_data.instance_buffer.Free( g_data.allocator );
     g_data.vertex_buffer.Free( g_data.allocator );
     g_data.cmd_lines.Free( g_data.allocator );
@@ -402,6 +433,7 @@ static ObjectCmd AddObject( ERSource rsource, EDrawRange draw_range, const RDIXD
             result.cmd->rsource_index = rsource;
             result.cmd->rsource_range_index = draw_range;
             result.cmd->pipeline_index = SelectPipeline( params, rsource );
+            result.cmd->hw_state = params.hw_state.hash;
             result.cmd->depth = 0;
         }
     }
@@ -431,6 +463,7 @@ static LinesCmd AddLineVertices( uint32_t num_vertices, const RDIXDebugParams& p
             result.cmd->rsource_index = RSOURCE_LINES;
             result.cmd->rsource_range_index = 0;
             result.cmd->pipeline_index = SelectPipeline( params, RSOURCE_LINES );
+            result.cmd->hw_state = params.hw_state.hash;
             result.cmd->depth = 0;
         }
     }
@@ -439,7 +472,7 @@ static LinesCmd AddLineVertices( uint32_t num_vertices, const RDIXDebugParams& p
 
 void AddAABB( const vec3_t& center, const vec3_t& extents, const RDIXDebugParams& params )
 {
-    if( params.is_solid )
+    if( params.hw_state.raster.fillMode == RDIEFillMode::SOLID )
     {
         ObjectCmd objcmd = AddObject( RSOURCE_OBJ, DRAW_RANGE_BOX, params );
         if( objcmd.matrix )
@@ -530,12 +563,7 @@ void AddAxes( const mat44_t& pose, const RDIXDebugParams& params )
     AddLine( p, p + r.c2 * params.scale, params_copy );
 }
 
-struct VertexLayoutBuilder
-{
-    
-};
-
-void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
+void Flush( RDIDevice* dev, RDICommandQueue* cmdq, const mat44_t& viewproj )
 {
     if( g_data.cmd_lines.Empty() && g_data.cmd_objects.Empty() )
         return;
@@ -546,8 +574,6 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
 
     InstanceData idata = {};
     UpdateCBuffer( cmdq, g_data.cbuffer_idata, &idata );
-
-    
 
     {
         shader::VertexLayout vlayout;
@@ -593,7 +619,12 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
                 RDIXPipeline* pipeline = g_data.pipeline[cmd.pipeline_index];
                 RDIXRenderSource* rsource = g_data.rsource[cmd.rsource_index];
 
-                BindPipeline( cmdq, pipeline, true );
+                RDIHardwareStateDesc hw_state_desc;
+                hw_state_desc.hash = cmd.hw_state;
+                RDIHardwareState hw_state = AcquireHardwareState( dev, &g_data, hw_state_desc );
+
+                BindPipeline( cmdq, pipeline, RDIXPipelineFlags().NoHwState() );
+                SetHardwareState( cmdq, hw_state );
                 SetTopology( cmdq, RDIETopology::TRIANGLES );
                 DrawInstanced( cmdq, draw_range.count, 0, 1 );
                 //BindRenderSource( cmdq, rsource );
@@ -614,8 +645,15 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
         std::sort( g_data.cmd_lines.begin(), g_data.cmd_lines.end(), std::less<Cmd>() );
         const u32 nb_cmd = g_data.cmd_lines.Size();
 
+        RDIHardwareStateDesc current_hw_state_desc;
+        current_hw_state_desc.hash = g_data.cmd_lines[0].hw_state;
+        {
+            RDIHardwareState hw_state = AcquireHardwareState( dev, &g_data, current_hw_state_desc );
+            SetHardwareState( cmdq, hw_state );
+        }
+
         uint32_t current_pipeline_index = g_data.cmd_lines[0].pipeline_index;
-        BindPipeline( cmdq, g_data.pipeline[current_pipeline_index], true );
+        BindPipeline( cmdq, g_data.pipeline[current_pipeline_index], RDIXPipelineFlags().NoHwState() );
         SetTopology( cmdq, RDIETopology::LINES );
         Vertex* mapped_data = (Vertex*)Map( cmdq, g_data.buffer_vertices, RDIEMapType::WRITE );
 
@@ -627,6 +665,7 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
 
             const bool vertex_overflow = (nb_vertices + cmd.data_count > GPU_LINE_VBUFFER_CAPACITY);
             const bool pipeline_mismatch = current_pipeline_index != cmd.pipeline_index;
+            const bool hw_state_mismatch = current_hw_state_desc.hash != cmd.hw_state;
 
             if( vertex_overflow || pipeline_mismatch )
             {
@@ -636,9 +675,16 @@ void Flush( RDICommandQueue* cmdq, const mat44_t& viewproj )
                 mapped_data = (Vertex*)Map( cmdq, g_data.buffer_vertices, RDIEMapType::WRITE );
                 nb_vertices = 0;
 
+                if( hw_state_mismatch )
+                {
+                    current_hw_state_desc.hash = cmd.hw_state;
+                    RDIHardwareState hw_state = AcquireHardwareState( dev, &g_data, current_hw_state_desc );
+                    SetHardwareState( cmdq, hw_state );
+                }
+
                 if( pipeline_mismatch )
                 {
-                    BindPipeline( cmdq, g_data.pipeline[cmd.pipeline_index], true );
+                    BindPipeline( cmdq, g_data.pipeline[cmd.pipeline_index], RDIXPipelineFlags().NoHwState() );
                     SetTopology( cmdq, RDIETopology::LINES );
                     current_pipeline_index = cmd.pipeline_index;
                 }

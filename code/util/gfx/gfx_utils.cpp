@@ -96,7 +96,7 @@ void GFXUtils::CopyTexture( RDICommandQueue * cmdq, RDITextureRW * output, const
         ChangeToMainFramebuffer( cmdq );
 
     SetViewport( cmdq, RDIViewport::Create( viewport ) );
-    BindPipeline( cmdq, data->pipeline.copy_rgba, true );
+    BindPipeline( cmdq, data->pipeline.copy_rgba );
     Draw( cmdq, 6, 0 );
 }
 

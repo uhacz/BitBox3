@@ -21,12 +21,18 @@
     <ClInclude Include="ride\ride_app.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ride\low_rendering.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ride\ride_app.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="application.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ride\low_rendering.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

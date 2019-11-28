@@ -29,7 +29,7 @@ RDIX_DEFINE_COMMAND( RDIXClearRenderTargetCmd,
 
 
 RDIX_DEFINE_COMMAND( RDIXSetPipelineCmd, 
-{ BindPipeline( cmdq, cmd->pipeline, cmd->bindResources ? true : false ); } );
+{ BindPipeline( cmdq, cmd->pipeline, { cmd->flags } ); } );
 
 RDIX_DEFINE_COMMAND( RDIXSetResourcesCmd,
 { BindResources( cmdq, cmd->rbind ); } );

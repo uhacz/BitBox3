@@ -219,6 +219,7 @@
     <ClInclude Include="eastl\vector_set.h" />
     <ClInclude Include="eastl\version.h" />
     <ClInclude Include="eastl\weak_ptr.h" />
+    <ClInclude Include="float16.h" />
     <ClInclude Include="hash.h" />
     <ClInclude Include="hashed_string.h" />
     <ClInclude Include="hashmap.h" />

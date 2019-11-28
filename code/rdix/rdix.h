@@ -21,15 +21,43 @@ uint32_t		GenerateShaderFileHashedName( const char* name, uint32_t version );
 uint32_t		FindShaderPass( RDIXShaderFile* shaderfile, const char* passname );
 
 // --- Pipeline
+struct RDIXPipeline
+{
+    RDIShaderPass pass;
+    RDIHardwareState hardware_state;
+    RDIInputLayout input_layout;
+    RDIXResourceBinding* resources = nullptr;
+    RDIETopology::Enum topology = RDIETopology::TRIANGLES;
+    BXIAllocator* allocator = nullptr;
+};
+
 RDIXPipeline*		 CreatePipeline ( RDIDevice* dev, const RDIXPipelineDesc& desc, BXIAllocator* allocator );
 void				 DestroyPipeline( RDIXPipeline** pipeline );
-void				 BindPipeline( RDICommandQueue* cmdq, RDIXPipeline* pipeline, bool bindResources );
+
+union RDIXPipelineFlags
+{
+    u32 all = 0xFFFFFFFF;
+    struct  
+    {
+        u32 shaders : 1;
+        u32 resources : 1;
+        u32 hw_state : 1;
+    };
+
+
+    RDIXPipelineFlags& NoShaders() { shaders = 0; return *this; }
+    RDIXPipelineFlags& NoResources() { resources = 0; return *this; }
+    RDIXPipelineFlags& NoHwState() { hw_state = 0; return *this; }
+};
+void				 BindPipeline( RDICommandQueue* cmdq, RDIXPipeline* pipeline, const RDIXPipelineFlags& flags = RDIXPipelineFlags() );
 RDIXResourceBinding* ResourceBinding( const RDIXPipeline* p );
 
 
 // --- Resources
 RDIXResourceBinding* CreateResourceBinding ( const RDIXResourceLayout& layout, BXIAllocator* allocator );
 void				 DestroyResourceBinding( RDIXResourceBinding** binding );
+u32                  GetMemorySize( const RDIXResourceBinding* binding );
+void                 CloneResourceBinding( void* dst, u32 dst_size, const RDIXResourceBinding* binding );
 RDIXResourceBinding* CloneResourceBinding( const RDIXResourceBinding* binding, BXIAllocator* allocator );
 bool				 ClearResource( RDICommandQueue* cmdq, RDIXResourceBinding* binding, const char* name );
 void				 BindResources( RDICommandQueue* cmdq, RDIXResourceBinding* binding );

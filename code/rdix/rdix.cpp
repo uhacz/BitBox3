@@ -67,15 +67,6 @@ uint32_t FindShaderPass( RDIXShaderFile* shaderfile, const char* passname )
 
 
 //--- Pipeline
-struct RDIXPipeline
-{
-	RDIShaderPass pass;
-	RDIHardwareState hardware_state;
-	RDIInputLayout input_layout;
-	RDIXResourceBinding* resources = nullptr;
-	RDIETopology::Enum topology = RDIETopology::TRIANGLES;
-    BXIAllocator* allocator = nullptr;
-};
 RDIXPipeline* CreatePipeline( RDIDevice* dev, const RDIXPipelineDesc& desc, BXIAllocator* allocator )
 {
 	RDIXPipeline* impl = (RDIXPipeline*)BX_NEW( allocator, RDIXPipeline );
@@ -135,12 +126,20 @@ void DestroyPipeline( RDIXPipeline** pipeline )
         
 	BX_DELETE0( allocator, pipeline[0] );
 }
-void BindPipeline( RDICommandQueue* cmdq, RDIXPipeline* pipeline, bool bindResources )
+void BindPipeline( RDICommandQueue* cmdq, RDIXPipeline* pipeline, const RDIXPipelineFlags& flags )
 {
-	SetShaderPass( cmdq, pipeline->pass );
-	SetInputLayout( cmdq, pipeline->input_layout );
-	SetHardwareState( cmdq, pipeline->hardware_state );
-	if( pipeline->resources && bindResources )
+    if( flags.shaders )
+    {
+        SetShaderPass( cmdq, pipeline->pass );
+        SetInputLayout( cmdq, pipeline->input_layout );
+    }
+
+    if( flags.hw_state )
+    {
+        SetHardwareState( cmdq, pipeline->hardware_state );
+    }
+
+	if( pipeline->resources && flags.resources )
 	{
 		BindResources( cmdq, pipeline->resources );
 	}
@@ -156,6 +155,8 @@ RDIXResourceBinding * CloneResourceBinding( const RDIXPipeline * p )
 {
 	return nullptr;
 }
+
+
 
 //---
 
@@ -176,8 +177,8 @@ struct RDIXResourceBinding
 	uint8_t* Data() { return (uint8_t*)(Bindings() + count); }
 	
     BXIAllocator* allocator = nullptr;
-	uint16_t count = 0;
-	uint16_t data_size = 0;
+    RDIXResourceBindingMemoryRequirments mem;
+	uint32_t count = 0;
 };
 
 namespace
@@ -225,7 +226,7 @@ RDIXResourceBinding* CreateResourceBinding( const RDIXResourceLayout& layout, BX
 
 	RDIXResourceBinding* impl = (RDIXResourceBinding*)mem;
 	impl->count = layout.count;
-	impl->data_size = mem_req.data_size;
+	impl->mem = mem_req;
 
 	uint32_t* hashed_names = (uint32_t*)impl->HashedNames();
 	RDIXResourceBinding::Binding* bindings = (RDIXResourceBinding::Binding*)impl->Bindings();
@@ -286,12 +287,21 @@ void DestroyResourceBinding( RDIXResourceBinding** binding )
 	BX_FREE0( allocator, binding[0] );
 }
 
+u32 GetMemorySize( const RDIXResourceBinding* binding )
+{
+    return (binding) ? binding->mem.Total() : 0;
+}
+void CloneResourceBinding( void* dst, u32 dst_size, const RDIXResourceBinding* binding )
+{
+    SYS_ASSERT( dst_size == binding->mem.Total() );
+    RDIXResourceBinding* cloned = (RDIXResourceBinding*)dst;
+    memcpy( cloned, binding, dst_size );
+    cloned->allocator = nullptr;
+}
+
 RDIXResourceBinding* CloneResourceBinding( const RDIXResourceBinding* binding, BXIAllocator* allocator )
 {
-	uint32_t mem_size = 0;
-	mem_size += CalculateResourceBindingDescriprorSize( binding->count );
-	mem_size += binding->data_size;
-
+	const uint32_t mem_size = binding->mem.Total();
 	RDIXResourceBinding* cloned = (RDIXResourceBinding*)BX_MALLOC( allocator, mem_size, 8 );
 	memcpy( cloned, binding, mem_size );
     cloned->allocator = allocator;

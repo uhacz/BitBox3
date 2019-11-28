@@ -91,10 +91,10 @@ bool RideApplication::Update( BXWindow* win, unsigned long long deltaTimeUS, BXI
     }
     {
         RDIXDebug::AddAxes( mat44_t::identity() );
-        RDIXDebug::AddAxes( mat44_t( quat_t::rotation( 0.445f, normalize( vec3_t( 1.f, 1.f, 1.f ) ) ), vec4_t( 1.f, 1.f, 1.f, 1.f ) ) );
+        //RDIXDebug::AddAxes( mat44_t( quat_t::rotation( 0.445f, normalize( vec3_t( 1.f, 1.f, 1.f ) ) ), vec4_t( 1.f, 1.f, 1.f, 1.f ) ) );
         RDIXDebug::AddSphere( vec3_t( -1.f, 0.f, 2.f ), 0.5f, RDIXDebugParams( color32_t::GREEN() ).Solid() );
         RDIXDebug::AddSphere( vec3_t( -1.f, 0.f,-2.f ), 0.5f );
-        RDIXDebug::AddAABB( vec3_t( -1.f, 0.f, 0.f ), vec3_t( 0.5f ) );
+        RDIXDebug::AddAABB( vec3_t( -1.f, 0.f, 0.f ), vec3_t( 0.5f ), RDIXDebugParams( color32_t::RED() ).Solid() );
     }
 
     ClearState( _e.rdicmdq );
@@ -106,7 +106,7 @@ bool RideApplication::Update( BXWindow* win, unsigned long long deltaTimeUS, BXI
         const mat44_t viewproj = _camera.matrices.proj_api * _camera.matrices.view;
 
         BindRenderTarget( _e.rdicmdq, gfx_framebuffer.rtarget, { Framebuffer::FINAL }, true );
-        RDIXDebug::Flush( _e.rdicmdq, viewproj );
+        RDIXDebug::Flush( _e.rdidev, _e.rdicmdq, viewproj );
     }
 
     ChangeToMainFramebuffer( _e.rdicmdq );

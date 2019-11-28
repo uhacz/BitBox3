@@ -73,10 +73,10 @@ struct RDIXSetPipelineCmd : RDIXCommand
 {
     RDIX_DECLARE_COMMAND;
     RDIXPipeline* pipeline = nullptr;
-	uint8_t bindResources = 0;
+    u32 flags;
 
-    RDIXSetPipelineCmd( RDIXPipeline* p, bool br )
-        : pipeline( p ), bindResources( br ) {}
+    RDIXSetPipelineCmd( RDIXPipeline* p, u32 f )
+        : pipeline( p ), flags( f ) {}
 };
 struct RDIXSetResourcesCmd : RDIXCommand
 {

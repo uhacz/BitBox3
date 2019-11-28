@@ -238,7 +238,7 @@ namespace RDIEVertexSlot
 /// hwState
 namespace RDIEDepthFunc
 {
-    enum Enum
+    enum Enum : u8
     {
         NEVER = 0,
         LESS,
@@ -254,7 +254,7 @@ namespace RDIEDepthFunc
 
 namespace RDIEBlendFactor
 {
-    enum Enum
+    enum Enum : u8
     {
         ZERO = 0,
         ONE,
@@ -272,7 +272,7 @@ namespace RDIEBlendFactor
 
 namespace RDIEBlendEquation
 {
-    enum Enum
+    enum Enum : u8
     {
         ADD = 0,
         SUB,
@@ -284,7 +284,7 @@ namespace RDIEBlendEquation
 
 namespace RDIECullMode
 {
-    enum Enum
+    enum Enum : u8
     {
         NONE = 0,
         BACK,
@@ -294,7 +294,7 @@ namespace RDIECullMode
 
 namespace RDIEFillMode
 {
-    enum Enum
+    enum Enum : u8
     {
         SOLID = 0,
         WIREFRAME,
@@ -303,7 +303,7 @@ namespace RDIEFillMode
 
 namespace RDIEColorMask
 {
-    enum Enum
+    enum Enum : u8
     {
         NONE = 0,
         RED = BIT_OFFSET( 0 ),
@@ -316,7 +316,7 @@ namespace RDIEColorMask
 
 namespace RDIESamplerFilter
 {
-    enum Enum
+    enum Enum : u8
     {
         NEAREST = 0,
         LINEAR,
@@ -342,7 +342,7 @@ namespace RDIESamplerFilter
 
 namespace RDIESamplerDepthCmp
 {
-    enum Enum
+    enum Enum : u8
     {
         NONE = 0,
         GREATER,
@@ -357,7 +357,7 @@ namespace RDIESamplerDepthCmp
 
 namespace RDIEAddressMode
 {
-    enum Enum
+    enum Enum : u8
     {
         WRAP,
         CLAMP,
@@ -415,27 +415,27 @@ union RDISamplerDesc
     };
 };
 
-struct RDIHardwareStateDesc
+union RDIHardwareStateDesc
 {
     union Blend
     {
-        Blend& Enable     ()																 { enable = 1; return *this; }
-        Blend& Disable    ()																 { enable = 0; return *this; }
-        Blend& ColorMask  ( RDIEColorMask::Enum m )									 { color_mask = m; return *this; }
+        Blend& Enable     ()													   { enable = 1; return *this; }
+        Blend& Disable    ()													   { enable = 0; return *this; }
+        Blend& ColorMask  ( RDIEColorMask::Enum m )								   { color_mask = m; return *this; }
         Blend& Factor     ( RDIEBlendFactor::Enum src, RDIEBlendFactor::Enum dst ) { srcFactor = src; dstFactor = dst; return *this; }
         Blend& FactorAlpha( RDIEBlendFactor::Enum src, RDIEBlendFactor::Enum dst ) { srcFactorAlpha = src; dstFactorAlpha = dst; return *this; }
-        Blend& Equation   ( RDIEBlendEquation::Enum eq )								 { equation = eq; return *this; }
+        Blend& Equation   ( RDIEBlendEquation::Enum eq )						   { equation = eq; return *this; }
 
         uint32_t key;
         struct
         {
-            uint64_t enable : 1;
-            uint64_t color_mask : 4;
-            uint64_t equation : 4;
-            uint64_t srcFactor : 4;
-            uint64_t dstFactor : 4;
-            uint64_t srcFactorAlpha : 4;
-            uint64_t dstFactorAlpha : 4;
+            uint32_t enable : 1;
+            uint32_t color_mask : 4;
+            uint32_t equation : 4;
+            uint32_t srcFactor : 4;
+            uint32_t dstFactor : 4;
+            uint32_t srcFactorAlpha : 4;
+            uint32_t dstFactorAlpha : 4;
         };
     };
 
@@ -445,31 +445,31 @@ struct RDIHardwareStateDesc
         Depth& Test    ( uint8_t onOff )           { test = onOff; return *this; }
         Depth& Write   ( uint8_t onOff )           { write = onOff; return *this; }
 
-        uint32_t key;
+        uint16_t key;
         struct
         {
-            uint16_t function;
-            uint8_t  test;
-            uint8_t	write;
+            uint16_t function : 14;
+            uint16_t test : 1;
+            uint16_t write : 1;
         };
     };
 
     union Raster
     {
         Raster& CullMode        ( RDIECullMode::Enum c )  { cullMode = c; return *this; }
-        Raster& FillMode        ( RDIEFillMode::Enum f ) { fillMode = f; return *this; }
+        Raster& FillMode        ( RDIEFillMode::Enum f )  { fillMode = f; return *this; }
         Raster& Multisample     ( uint32_t onOff )         { multisample = onOff; return *this; }
         Raster& AntialiassedLine( uint32_t onOff )         { antialiasedLine = onOff; return *this; }
         Raster& Scissor         ( uint32_t onOff )         { scissor = onOff; return *this; }
             
-        uint32_t key;
+        uint16_t key;
         struct
         {
-            uint32_t cullMode : 2;
-            uint32_t fillMode : 2;
-            uint32_t multisample : 1;
-            uint32_t antialiasedLine : 1;
-            uint32_t scissor : 1;
+            uint16_t cullMode : 2;
+            uint16_t fillMode : 2;
+            uint16_t multisample : 1;
+            uint16_t antialiasedLine : 1;
+            uint16_t scissor : 1;
         };
     };
 
@@ -485,10 +485,17 @@ struct RDIHardwareStateDesc
         depth.Function( RDIEDepthFunc::LEQUAL ).Test( 1 ).Write( 1 );
 
         raster.CullMode( RDIECullMode::BACK ).FillMode( RDIEFillMode::SOLID ).Multisample( 1 ).AntialiassedLine( 1 ).Scissor( 0 );
+    
+        SYS_STATIC_ASSERT( sizeof( RDIHardwareStateDesc ) == sizeof( uint64_t ) );
     }
-    Blend blend;
-    Depth depth;
-    Raster raster;
+
+    uint64_t hash;
+    struct
+    {
+        Blend blend;
+        Depth depth;
+        Raster raster;
+    };
 };
 
 struct RDIViewport

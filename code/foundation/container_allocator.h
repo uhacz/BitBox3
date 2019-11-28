@@ -50,4 +50,6 @@ struct bx_container_allocator
 
     void set_name( const char* )
     { }
+
+    //bx_container_allocator* GetDefaultAllocator();
 };
