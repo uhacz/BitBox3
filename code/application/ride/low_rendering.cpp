@@ -10,12 +10,41 @@
 
 
 static constexpr u32 MAX_PIPELINE = 128;
-static constexpr u32 MAX_GEOMETY = 1 << 16;
-static constexpr u32 MAX_GEOMETRY_STREAMS = MAX_GEOMETY * 8;
+static constexpr u32 MAX_GEOMETRY = 1 << 13;
+static constexpr u32 MAX_GEOMETRY_STREAMS = MAX_GEOMETRY * 8;
 static constexpr u32 MAX_INSTANCE = 1 << 16;
+static constexpr u32 MAX_INSTANCE_DATA = 1 << 16;
 static constexpr u32 MAX_CAMERA = 32;
 static constexpr u32 MAX_TARGET = 64;
 static constexpr u32 MAX_DRAW_CMD = 1 << 17;
+static constexpr u32 SIZE_GENERIC_BUFFER = 1024 * 64;
+
+union DrawCmdData
+{
+    struct
+    {
+        u64 lo;
+        u64 hi;
+    } key;
+    struct
+    {
+        u64 depth : 16;
+        u64 instance_index : 24;
+        u64 geometry_index : 24;
+
+        u64 geometry_layout_nb_streams : 8;
+        u64 geometry_layout_first_index : 24;
+        u64 pipeline_index : 8;
+        u64 camera_index : 8;
+        u64 target_index : 8;
+        u64 layer : 8;
+    };
+};
+static inline bool operator < ( const DrawCmdData& left, const DrawCmdData& right )
+{
+    return (left.key.hi == right.key.hi) ? left.key.lo < right.key.lo : left.key.hi < right.key.hi;
+}
+SYS_STATIC_ASSERT( sizeof( DrawCmdData ) == 16 );
 
 struct PipelineData
 {
@@ -27,55 +56,28 @@ struct PipelineData
 struct GeometryData
 {
     RDIBufferRO vertices;
-    RDIBufferRO insices;
+    RDIBufferRO indices;
     shader::DrawRange draw_range;
 
     u32 streams_index;
     u32 nb_streams;
-    //shader::VertexStream streams[1];
 };
 
-struct InstanceData 
+struct InstanceData
 {
-    u32 nb_instances;
-    u32 __padding[3];
-    mat44_t data[1];
+    shader::float4x4 data;
 };
-
-union DrawCmdData
+struct InstanceInfo
 {
-    struct  
-    {
-        u64 lo;
-        u64 hi;
-    } key;
-    struct  
-    {
-        u64 index : 24;
-        u64 depth : 16;
-        u64 instance_offset : 24;
-        u64 geometry_offset : 24;
-        u64 pipeline_index : 16;
-        u64 camera_index : 8;
-        u64 target_index : 8;
-        u64 layer : 8;
-    };
+    u32 begin_index;
+    u32 count;
 };
-static inline bool operator < ( const DrawCmdData& left, const DrawCmdData& right )
-{
-    return (left.key.hi == right.key.hi) ? left.key.lo < right.key.lo : left.key.hi < right.key.hi;
-}
-
-
-SYS_STATIC_ASSERT( sizeof( DrawCmdData ) == 16 );
 
 using CameraData = shader::CameraViewData;
 using TargetData = LowRenderer::Target;
 using AtomicU32 = std::atomic_uint32_t;
 
-static constexpr u32 SIZE_GEOMETRY_BUFFER = MAX_GEOMETY * sizeof( GeometryData );
-static constexpr u32 SIZE_INSTANCE_BUFFER = MAX_INSTANCE * sizeof( InstanceData );
-static constexpr u32 SIZE_GENERIC_BUFFER = 1024 * 64;
+
 
 struct ManagedResources
 {
@@ -102,6 +104,7 @@ struct GpuResources
     RDIBufferRO target;
     RDIBufferRO camera;
     RDIBufferRO matrices;
+    RDIBufferRO vertex_layout;
     RDIConstantBuffer draw_call;
 
     static void Create( GpuResources* resources, RDIDevice* dev )
@@ -109,11 +112,13 @@ struct GpuResources
         resources->target = CreateStructuredBufferRO( dev, MAX_TARGET, sizeof( shader::RenderTargetData ), RDIECpuAccess::WRITE );
         resources->camera = CreateStructuredBufferRO( dev, MAX_CAMERA, sizeof( shader::CameraViewData ), RDIECpuAccess::WRITE );
         resources->matrices = CreateStructuredBufferRO( dev, MAX_INSTANCE, sizeof( shader::float4x4 ), RDIECpuAccess::WRITE );
+        resources->vertex_layout = CreateStructuredBufferRO( dev, MAX_GEOMETRY_STREAMS, sizeof( shader::VertexStream ), RDIECpuAccess::WRITE );
         resources->draw_call = CreateConstantBuffer( dev, sizeof( shader::DrawCallData ) );
     }
     static void Destroy( GpuResources* resources )
     {
         ::Destroy( &resources->draw_call );
+        ::Destroy( &resources->vertex_layout );
         ::Destroy( &resources->matrices );
         ::Destroy( &resources->camera );
         ::Destroy( &resources->target );
@@ -123,7 +128,16 @@ struct GpuResources
         SetResourcesRO( cmdq, &resources->target, 0, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, &resources->camera, 1, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, &resources->matrices, 2, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetResourcesRO( cmdq, &resources->vertex_layout, 3, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetCbuffers   ( cmdq, &resources->draw_call, 16, 1, RDIEPipeline::ALL_STAGES_MASK );
+    }
+    static void Unbind( GpuResources* resources, RDICommandQueue* cmdq )
+    {
+        SetResourcesRO( cmdq, nullptr, 0, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetResourcesRO( cmdq, nullptr, 1, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetResourcesRO( cmdq, nullptr, 2, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetResourcesRO( cmdq, nullptr, 3, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetCbuffers   ( cmdq, nullptr, 16, 1, RDIEPipeline::ALL_STAGES_MASK );
     }
 };
 
@@ -131,24 +145,23 @@ struct LowRenderer::Impl
 {
     ManagedResources managed_resources;
     GpuResources gpu_resources;
-
-    PipelineData pipelines[MAX_PIPELINE];
-    GeometryData geometry_data[MAX_GEOMETY];
-    shader::VertexStream geometry_streams[MAX_GEOMETRY_STREAMS];
-
-    //u8 geometry[SIZE_GEOMETRY_BUFFER];
-    u8 instance[SIZE_INSTANCE_BUFFER];
+    
     u8 generic_data[SIZE_GENERIC_BUFFER];
+    PipelineData pipelines[MAX_PIPELINE];
+    GeometryData geometry_data[MAX_GEOMETRY];
+    shader::VertexStream geometry_stream_desc[MAX_GEOMETRY_STREAMS];
+    InstanceData instance_data[MAX_INSTANCE_DATA];
+    InstanceInfo instance_info[MAX_INSTANCE];
     CameraData camera[MAX_CAMERA];
     TargetData target[MAX_TARGET];
     DrawCmdData draw_cmd[MAX_DRAW_CMD];
 
+    AtomicU32 offset_generic = 0;
     AtomicU32 nb_pipeline = 0;
     AtomicU32 nb_geometry = 0;
-    AtomicU32 nb_geometry_streams = 0;
-    //AtomicU32 offset_geometry = 0;
-    AtomicU32 offset_instance = 0;
-    AtomicU32 offset_generic = 0;
+    AtomicU32 nb_geometry_stream_desc = 0;
+    AtomicU32 nb_instance_data = 0;
+    AtomicU32 nb_instance_info = 0;
     AtomicU32 nb_camera = 0;
     AtomicU32 nb_target = 0;
     AtomicU32 nb_draw_cmd = 0;
@@ -163,6 +176,18 @@ static void StartUp( LowRenderer::Impl* impl, RDIDevice* dev )
 static void ShutDown( LowRenderer::Impl* impl )
 {
     GpuResources::Destroy( &impl->gpu_resources );
+}
+static void Clear( LowRenderer::Impl* impl )
+{
+    impl->offset_generic = 0;
+    impl->nb_pipeline = 0;
+    impl->nb_geometry = 0;
+    impl->nb_geometry_stream_desc = 0;
+    impl->nb_instance_data = 0;
+    impl->nb_instance_info = 0;
+    impl->nb_camera = 0;
+    impl->nb_target = 0;
+    impl->nb_draw_cmd = 0;
 }
 
 
@@ -200,30 +225,43 @@ AllocResult<PipelineData> AllocPipeline( LowRenderer::Impl* impl )
 
     return { &impl->pipelines[index], index };
 }
-AllocResult<GeometryData> AllocGeometry( LowRenderer::Impl* impl, u32 nb_streams )
+AllocResult<GeometryData> AllocGeometry( LowRenderer::Impl* impl )
 {
-    SYS_ASSERT( nb_streams > 0 );
-    const u32 mem_required = sizeof( GeometryData ) + ((nb_streams - 1) * sizeof( GeometryData::streams ));
-    
-    const u32 offset = impl->offset_geometry.fetch_add( mem_required );
-    if( offset + mem_required > SIZE_GEOMETRY_BUFFER )
-    {
+    const u32 index = impl->nb_geometry++;
+    if( index >= MAX_GEOMETRY )
         return AllocResult<GeometryData>::Null();
-    }
 
-    return { (GeometryData*)(impl->geometry + offset ), offset };
+    return { &impl->geometry_data[index], index };
 }
 
-AllocResult<InstanceData> AllocInstance( LowRenderer::Impl* impl, u32 nb_instances )
+AllocResult< shader::VertexStream> AllocGeometryStreams( LowRenderer::Impl* impl, u32 nb_streams )
 {
-    const u32 required_mem = sizeof( InstanceData ) + ((nb_instances - 1) * sizeof( InstanceData::data[0] ));
-    const u32 offset = impl->offset_instance.fetch_add( required_mem );
-    if( offset + required_mem > SIZE_INSTANCE_BUFFER )
-    {
-        return AllocResult<InstanceData>::Null();
-    }
+    SYS_ASSERT( nb_streams > 0 );
+    
+    const u32 first_index = impl->nb_geometry_stream_desc.fetch_add( nb_streams );
+    const u32 end = first_index + nb_streams;
+    if( end > MAX_GEOMETRY_STREAMS )
+        return AllocResult< shader::VertexStream>::Null();
 
-    return { (InstanceData*)impl->instance + offset, offset };
+    return { &impl->geometry_stream_desc[first_index], first_index };
+}
+
+AllocResult<InstanceData> AllocInstanceData( LowRenderer::Impl* impl, u32 nb_instances )
+{
+    const u32 first_index = impl->nb_instance_data.fetch_add( nb_instances );
+    if( first_index + nb_instances >= MAX_INSTANCE_DATA )
+        return AllocResult<InstanceData>::Null();
+
+    return { &impl->instance_data[first_index], first_index };
+}
+
+AllocResult<InstanceInfo> AllocInstanceInfo( LowRenderer::Impl* impl )
+{
+    const u32 index = impl->nb_instance_info++;
+    if( index >= MAX_INSTANCE )
+        return AllocResult<InstanceInfo>::Null();
+
+    return { &impl->instance_info[index], index };
 }
 
 AllocResult<CameraData> AllocCamera( LowRenderer::Impl* impl )
@@ -274,6 +312,7 @@ u8 LowRenderer::AddCamera( const Camera& camera )
     data->view     = camera._matrices.view;
     data->proj     = camera._matrices.proj;
     data->proj_api = camera._matrices.proj_api;
+    data->view_proj_api = camera._matrices.proj_api * camera._matrices.view;
 
     data->aspect = camera._params.aspect();
     data->fov    = camera._params.fov();
@@ -314,34 +353,49 @@ u8 LowRenderer::AddPipeline( const Pipeline& pipeline )
 
 u32 LowRenderer::AddGeometry( const Geometry& geometry )
 {
-    SYS_ASSERT( geometry._vertex_layout.nb_streams <= MAX_VERTEX_STREAMS );
-
-    AllocResult<GeometryData> data = AllocGeometry( impl, geometry._vertex_layout.nb_streams );
+    AllocResult<GeometryData> data = AllocGeometry( impl );
     if( !data )
-        return SIZE_GEOMETRY_BUFFER;
+        return MAX_GEOMETRY;
 
     data->vertices = geometry._vertices;
-    data->insices = geometry._indices;
+    data->indices = geometry._indices;
     data->draw_range = geometry._range;
-    data->nb_streams = geometry._vertex_layout.nb_streams;
-    for( u32 i = 0; i < geometry._vertex_layout.nb_streams; ++i )
-        data->streams[i] = geometry._vertex_layout.stream[i];
+
+    return data.index;
+}
+
+u32 LowRenderer::AddGeometryLayout( const GeometryLayout& layout )
+{
+    SYS_ASSERT( layout._layout.nb_streams <= MAX_VERTEX_STREAMS );
+
+    AllocResult<shader::VertexStream> data = AllocGeometryStreams( impl, layout._layout.nb_streams );
+    if( !data )
+        return MAX_GEOMETRY_STREAMS;
+
+    const u32 n = layout._layout.nb_streams;
+    for( u32 i = 0; i < n; ++i )
+        data.pointer[i] = layout._layout.stream[i];
 
     return data.index;
 }
 
 u32 LowRenderer::AddInstance( const Instance& instance )
 {
-    AllocResult<InstanceData> data = AllocInstance( impl, instance._count );
+    AllocResult<InstanceData> data = AllocInstanceData( impl, instance._count );
     if( !data )
-        return SIZE_INSTANCE_BUFFER;
+        return MAX_INSTANCE;
 
-    SYS_ASSERT( instance._stride == sizeof( InstanceData::data[0] ) );
+    AllocResult<InstanceInfo> info = AllocInstanceInfo( impl );
+    if( !info )
+        return MAX_INSTANCE;
 
-    memcpy( data->data, instance._data, instance._count * instance._stride );
-    data->nb_instances = instance._count;
+    info->begin_index = data.index;
+    info->count = instance._count;
 
-    return data.offset;
+    SYS_ASSERT( instance._stride == sizeof( InstanceData ) );
+    memcpy( data.pointer, instance._data, instance._count * instance._stride );
+
+    return info.index;
 }
 
 bool LowRenderer::AddDrawCmd( const DrawCmd& cmd, f32 depth )
@@ -354,10 +408,12 @@ bool LowRenderer::AddDrawCmd( const DrawCmd& cmd, f32 depth )
     data->key.lo = 0;
     data->key.hi = 0;
 
-    data->index = data.index;
     data->depth = float_to_half_fast2( fromF32( depth ) ).u;
-    data->instance_offset = cmd.instance_offset;
-    data->geometry_offset = cmd.geometry_offset;
+    data->instance_index = cmd.instance_index;
+    data->geometry_index = cmd.geometry_index;
+    
+    data->geometry_layout_nb_streams = cmd.geometry_layout_index;
+    data->geometry_layout_first_index = cmd.geometry_layout_nb_streams;
     data->pipeline_index = cmd.pipeline_index;
     data->camera_index = cmd.camera_index;
     data->target_index = cmd.target_index;
@@ -372,8 +428,9 @@ static inline bool ValidateDrawCmdData( const DrawCmdData& cmd )
     result = result && (cmd.target_index < MAX_TARGET);
     result = result && (cmd.camera_index < MAX_CAMERA);
     result = result && (cmd.pipeline_index < MAX_PIPELINE);
-    result = result && (cmd.geometry_offset < SIZE_GEOMETRY_BUFFER);
-    result = result && (cmd.instance_offset < SIZE_INSTANCE_BUFFER);
+    result = result && (cmd.geometry_index < MAX_GEOMETRY );
+    result = result && (cmd.geometry_layout_first_index + cmd.geometry_layout_nb_streams <= MAX_GEOMETRY_STREAMS);
+    result = result && (cmd.instance_index < MAX_INSTANCE );
     return result;
 }
 
@@ -386,6 +443,7 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
         shader::RenderTargetData* shader_target = (shader::RenderTargetData*)Map( cmdq, impl->gpu_resources.target, RDIEMapType::WRITE );
         shader::CameraViewData* shader_camera = (shader::CameraViewData*)Map( cmdq, impl->gpu_resources.camera, RDIEMapType::WRITE );
         shader::float4x4* shader_matrices = (shader::float4x4*)Map( cmdq, impl->gpu_resources.matrices, RDIEMapType::WRITE );
+        shader::VertexStream* shader_vertex_desc = (shader::VertexStream*)Map( cmdq, impl->gpu_resources.vertex_layout, RDIEMapType::WRITE );
 
         const u32 nb_targets = impl->nb_target;
         for( u32 i = 0; i < nb_targets; ++i )
@@ -409,8 +467,10 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
         SYS_STATIC_ASSERT( sizeof( *shader_camera ) == sizeof( *impl->camera ) );
 
         memcpy( shader_camera, &impl->camera[0], sizeof( shader::CameraViewData ) * impl->nb_camera );
-        memcpy( shader_matrices, &impl->instance[0], impl->offset_instance );
+        memcpy( shader_matrices, &impl->instance_data[0], impl->nb_instance_data * sizeof( InstanceData ) );
+        memcpy( shader_vertex_desc, &impl->geometry_stream_desc[0], impl->nb_geometry_stream_desc * sizeof( shader::VertexStream ) );
 
+        Unmap( cmdq, impl->gpu_resources.vertex_layout );
         Unmap( cmdq, impl->gpu_resources.matrices );
         Unmap( cmdq, impl->gpu_resources.camera );
         Unmap( cmdq, impl->gpu_resources.target );
@@ -435,27 +495,44 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
         }
 
         const TargetData& target = impl->target[cmd.target_index];
-        const CameraData& camera = impl->camera[cmd.camera_index];
         const PipelineData& pipeline = impl->pipelines[cmd.pipeline_index];
-        const GeometryData* geometry = (const GeometryData*)(impl->geometry + cmd.geometry_offset);
-        const InstanceData* instances = (const InstanceData*)(impl->instance + cmd.instance_offset);
+        const GeometryData& geometry = impl->geometry_data[cmd.geometry_index];
+        const InstanceInfo& instance_info = impl->instance_info[cmd.instance_index];
 
         ChangeRenderTargets( cmdq, (RDITextureRW*)target._color_textures, target._nb_color_textures, target._depth_texture );
-        // SetCamera()
-
         SetShaderPass( cmdq, pipeline.shader );
         BindResources( cmdq, pipeline.resources );
         
         RDIHardwareState hw_state = AcquireHardwareState( dev, &impl->managed_resources, pipeline.hw_state_desc );
         SetHardwareState( cmdq, hw_state );
-
         SetTopology( cmdq, pipeline.topology );
 
-        // geometry
+        shader::DrawCallData draw_call;
+        draw_call.target_index = cmd.target_index;
+        draw_call.camera_index = cmd.camera_index;
+        draw_call.vstream_begin = cmd.geometry_layout_first_index;
+        draw_call.vstream_count = cmd.geometry_layout_nb_streams;
+        draw_call.first_instance_index = instance_info.begin_index;
+        draw_call.draw_range = geometry.draw_range;
+        UpdateCBuffer( cmdq, impl->gpu_resources.draw_call, &draw_call );
 
-        // instances
+        SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.vertices, 32, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.indices, 40, 1, RDIEPipeline::ALL_STAGES_MASK );
 
+        const shader::DrawRange range = geometry.draw_range;
+
+        if( geometry.indices.id )
+        {
+            DrawIndexedInstanced( cmdq, range.count, range.begin, instance_info.count, range.base_vertex );
+        }
+        else
+        {
+            DrawInstanced( cmdq, range.count, range.begin, instance_info.count );
+        }
     }
+
+    Clear( impl );
+    GpuResources::Unbind( &impl->gpu_resources, cmdq );
 }
 
 LowRenderer* LowRenderer::StartUp( RDIDevice* dev, BXIAllocator* allocator )
@@ -481,6 +558,7 @@ void LowRenderer::ShutDown( LowRenderer** llr_handle )
     BXIAllocator* allocator = llr->impl->allocator;
 
     ::ShutDown( llr->impl );
+    InvokeDestructor( llr->impl );
 
     BX_DELETE0( allocator, llr_handle[0] );
 }
@@ -534,19 +612,19 @@ LowRenderer::Target::Target( RDITextureDepth dtex )
 LowRenderer::Geometry::Geometry()
 {}
 
-shader::VertexStream* LowRenderer::Geometry::AddStream()
+shader::VertexStream* LowRenderer::GeometryLayout::AddStream()
 {
-    return shader::AddStream( &_vertex_layout );
+    return shader::AddStream( &_layout );
 }
 
-LowRenderer::Geometry& LowRenderer::Geometry::Streams( const shader::VertexStream* streams, u32 nb_streams )
+LowRenderer::GeometryLayout& LowRenderer::GeometryLayout::Streams( const shader::VertexStream* streams, u32 nb_streams )
 {
     SYS_ASSERT( nb_streams <= MAX_VERTEX_STREAMS );
     for( u32 i = 0; i < nb_streams; ++i )
     {
-        _vertex_layout.stream[i] = streams[i];
+        _layout.stream[i] = streams[i];
     }
-    _vertex_layout.nb_streams = nb_streams;
+    _layout.nb_streams = nb_streams;
     return *this;
 }
 

@@ -38,16 +38,20 @@ struct LowRenderer
     {
         Geometry();           
 
-        shader::VertexStream* AddStream();
-        Geometry& Streams( const shader::VertexStream* streams, u32 nb_streams );
         Geometry& Vertices( RDIBufferRO v, u32 nb_vertices, u32 begin = 0 );
         Geometry& Indices( RDIBufferRO i, u32 nb_indices, u32 index_stride, u32 begin = 0 );
 
-        shader::VertexLayout _vertex_layout;
         shader::DrawRange _range = {};
-
         RDIBufferRO _vertices;
         RDIBufferRO _indices;
+    };
+
+    struct GeometryLayout
+    {
+        shader::VertexStream* AddStream();
+        GeometryLayout& Streams( const shader::VertexStream* streams, u32 nb_streams );
+
+        shader::VertexLayout _layout;
     };
 
     struct Instance
@@ -84,8 +88,10 @@ struct LowRenderer
 
     struct DrawCmd
     {
-        u32 instance_offset;
-        u32 geometry_offset;
+        u32 instance_index;
+        u32 geometry_index;
+        u32 geometry_layout_index;
+        u32 geometry_layout_nb_streams;
         u8 pipeline_index;
         u8 camera_index;
         u8 target_index;
@@ -96,6 +102,7 @@ struct LowRenderer
     u8  AddCamera  ( const Camera& camera );
     u8  AddPipeline( const Pipeline& pipeline );
     u32 AddGeometry( const Geometry& geometry );
+    u32 AddGeometryLayout( const GeometryLayout& layout );
     u32 AddInstance( const Instance& instance );
     bool AddDrawCmd( const DrawCmd& cmd, f32 depth );
 

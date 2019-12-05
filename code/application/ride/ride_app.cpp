@@ -9,6 +9,7 @@
 
 #include "time.h"
 #include "util/color.h"
+#include "low_rendering.h"
 
 
 struct Framebuffer
@@ -28,10 +29,13 @@ struct Camera
     CameraMatrices matrices;
 };
 
+static LowRenderer* low_rnd = nullptr;
 static GFXUtils* gfx_utils = nullptr;
 static Framebuffer gfx_framebuffer;
 static Camera _camera;
 static CameraInputContext _camera_input;
+
+
 
 bool RideApplication::Startup( int argc, const char** argv, BXWindow* win, BXIAllocator* allocator )
 {
@@ -47,6 +51,8 @@ bool RideApplication::Startup( int argc, const char** argv, BXWindow* win, BXIAl
         gfx_framebuffer.rtarget = CreateRenderTarget( _e.rdidev, rtdesc, allocator );
     
         GFXUtils::StartUp( &gfx_utils, _e.rdidev, allocator );
+    
+        low_rnd = LowRenderer::StartUp( _e.rdidev, allocator );
     }
     
     {
@@ -59,6 +65,7 @@ bool RideApplication::Startup( int argc, const char** argv, BXWindow* win, BXIAl
 
 void RideApplication::Shutdown( BXIAllocator* allocator )
 {
+    LowRenderer::ShutDown( &low_rnd );
     GFXUtils::ShutDown( &gfx_utils, _e.rdidev );
     DestroyRenderTarget( _e.rdidev, &gfx_framebuffer.rtarget );
     ENGLowLevel::Shutdown( &_e );

@@ -1,5 +1,5 @@
 <pass name = "main" vertex = "vs_main" pixel = "ps_main">
-< / pass>
+</pass>
 #~header
 
 #define SHADER_IMPLEMENTATION
@@ -18,19 +18,7 @@ shared cbuffer DrawCallDataCB : BSLOT( 16 )
 };
 
 ByteAddressBuffer g_vertices    : TSLOT( 32 );
-ByteAddressBuffer g_indices     : TSLOT( 33 );
-
-
-
-shared cbuffer ViewData
-{
-    matrix view_proj_matrix;
-    
-};
-shared cbuffer InstanceData
-{
-    uint instance_batch_offset;
-};
+ByteAddressBuffer g_indices     : TSLOT( 40 );
 
 struct in_VS
 {
@@ -74,17 +62,21 @@ in_PS vs_main( uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID )
 {
     in_PS output;
     
-    const uint instance_index = instance_batch_offset + instance_id;
-    matrix wm = g_matrices[instance_index];
+    const uint instance_index = g_draw_call.first_instance_index + instance_id;
+    matrix wm = g_matrix[instance_index];
 
     uint colorU32 = asuint( wm[3][3] );
     wm[3][3] = 1.0f;
 
-    uint vertex_index = LoadVertexIndex( _draw_range, vertex_id, g_indices );
-    float3 pos_ls = VertexLoad3F( _vlayout.stream[0], POS_ATTRIB, vertex_index, g_vertices );
+    VertexStream pos_stream = g_vstream[g_draw_call.vstream_begin];
+
+    uint vertex_index = LoadVertexIndex( g_draw_call.draw_range, vertex_id, g_indices );
+    float3 pos_ls = VertexLoad3F( pos_stream, POS_ATTRIB, vertex_index, g_vertices );
+
+    CameraViewData camera_data = g_camera[g_draw_call.camera_index];
 
     float4 world_pos = mul( wm, float4(pos_ls, 1.0) );
-    output.h_pos = mul( view_proj_matrix, world_pos );
+    output.h_pos = mul( camera_data.view_proj_api, world_pos );
     output.color = colorU32toFloat4_RGBA( colorU32 );
     return output;
 }

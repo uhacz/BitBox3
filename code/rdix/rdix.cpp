@@ -1,5 +1,4 @@
 #include "rdix.h"
-
 #include "rdix_command_buffer.h"
 
 #include <filesystem/filesystem.h>
@@ -106,7 +105,7 @@ RDIXPipeline* CreatePipeline( RDIDevice* dev, const RDIXPipelineDesc& desc, BXIA
 		void* resource_desc_memory = BX_MALLOC( allocator, pass.size_resource_descriptor, 16 );
 		memcpy( resource_desc_memory, src_resource_desc_ptr, pass.size_resource_descriptor );
 		impl->resources = (RDIXResourceBinding*)resource_desc_memory;
-	}
+    }
 
     impl->allocator = allocator;
 	return impl;
