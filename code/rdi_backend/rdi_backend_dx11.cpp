@@ -1368,9 +1368,12 @@ void SetCbuffers( RDICommandQueue* cmdq, RDIConstantBuffer* cbuffers, unsigned s
     ID3D11Buffer* buffers[SLOT_COUNT];
     memset( buffers, 0, sizeof( buffers ) );
 
-    for( unsigned i = 0; i < n; ++i )
+    if( cbuffers )
     {
-        buffers[i] = cbuffers[i].buffer;
+        for( unsigned i = 0; i < n; ++i )
+        {
+            buffers[i] = cbuffers[i].buffer;
+        }
     }
 
     if( stageMask & RDIEPipeline::VERTEX_MASK )

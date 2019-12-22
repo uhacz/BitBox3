@@ -11,4 +11,5 @@ struct RideApplication : BXIApplication
     virtual bool Update( BXWindow* win, unsigned long long deltaTimeUS, BXIAllocator* allocator ) override;
 
     ENGLowLevel _e;
+    unsigned long long _time_us = 0;
 };

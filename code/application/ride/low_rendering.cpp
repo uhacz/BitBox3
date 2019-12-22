@@ -129,7 +129,7 @@ struct GpuResources
         SetResourcesRO( cmdq, &resources->camera, 1, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, &resources->matrices, 2, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, &resources->vertex_layout, 3, 1, RDIEPipeline::ALL_STAGES_MASK );
-        SetCbuffers   ( cmdq, &resources->draw_call, 16, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetCbuffers   ( cmdq, &resources->draw_call, 0, 1, RDIEPipeline::ALL_STAGES_MASK );
     }
     static void Unbind( GpuResources* resources, RDICommandQueue* cmdq )
     {
@@ -137,7 +137,7 @@ struct GpuResources
         SetResourcesRO( cmdq, nullptr, 1, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, nullptr, 2, 1, RDIEPipeline::ALL_STAGES_MASK );
         SetResourcesRO( cmdq, nullptr, 3, 1, RDIEPipeline::ALL_STAGES_MASK );
-        SetCbuffers   ( cmdq, nullptr, 16, 1, RDIEPipeline::ALL_STAGES_MASK );
+        SetCbuffers   ( cmdq, nullptr, 0, 1, RDIEPipeline::ALL_STAGES_MASK );
     }
 };
 
@@ -412,8 +412,8 @@ bool LowRenderer::AddDrawCmd( const DrawCmd& cmd, f32 depth )
     data->instance_index = cmd.instance_index;
     data->geometry_index = cmd.geometry_index;
     
-    data->geometry_layout_nb_streams = cmd.geometry_layout_index;
-    data->geometry_layout_first_index = cmd.geometry_layout_nb_streams;
+    data->geometry_layout_first_index = cmd.geometry_layout_index;
+    data->geometry_layout_nb_streams = cmd.geometry_layout_nb_streams;
     data->pipeline_index = cmd.pipeline_index;
     data->camera_index = cmd.camera_index;
     data->target_index = cmd.target_index;
@@ -433,6 +433,15 @@ static inline bool ValidateDrawCmdData( const DrawCmdData& cmd )
     result = result && (cmd.instance_index < MAX_INSTANCE );
     return result;
 }
+
+struct State
+{
+    u16 target = MAX_TARGET;
+    u16 camera = MAX_CAMERA;
+    u32 pipeline = MAX_PIPELINE;
+    u32 geometry = MAX_GEOMETRY;
+    u32 geo_layout = MAX_GEOMETRY_STREAMS;
+};
 
 void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
 {
@@ -465,7 +474,7 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
         }
 
         SYS_STATIC_ASSERT( sizeof( *shader_camera ) == sizeof( *impl->camera ) );
-
+        
         memcpy( shader_camera, &impl->camera[0], sizeof( shader::CameraViewData ) * impl->nb_camera );
         memcpy( shader_matrices, &impl->instance_data[0], impl->nb_instance_data * sizeof( InstanceData ) );
         memcpy( shader_vertex_desc, &impl->geometry_stream_desc[0], impl->nb_geometry_stream_desc * sizeof( shader::VertexStream ) );
@@ -484,6 +493,8 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
 
     std::sort( impl->draw_cmd + begin_cmd, impl->draw_cmd + end_cmd, std::less< DrawCmdData >() );
 
+    State state = {};
+
     for( u32 icmd = begin_cmd; icmd < end_cmd; ++icmd )
     {
         const DrawCmdData cmd = impl->draw_cmd[icmd];
@@ -493,19 +504,46 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
             SYS_LOG_ERROR( "Draw command is invalid!" );
             continue;
         }
+                
+        if( state.target != cmd.target_index )
+        {
+            const TargetData& target = impl->target[cmd.target_index];
+            ChangeRenderTargets( cmdq, (RDITextureRW*)target._color_textures, target._nb_color_textures, target._depth_texture );
+            if( target._flag_clear_color )
+            {
+                f32 rgba[4];
+                color32_t::ToFloat4( rgba, target._clear_color );
+                ClearColorBuffers( cmdq, (RDITextureRW*)target._color_textures, target._nb_color_textures, rgba[0], rgba[1], rgba[2], rgba[3] );
+            }
+            if( target._flag_clear_depth )
+            {
+                ClearDepthBuffer( cmdq, target._depth_texture, target._clear_depth );
+            }
+            state.target = cmd.target_index;
+        }
 
-        const TargetData& target = impl->target[cmd.target_index];
-        const PipelineData& pipeline = impl->pipelines[cmd.pipeline_index];
+        if( state.pipeline != cmd.pipeline_index )
+        {
+            const PipelineData& pipeline = impl->pipelines[cmd.pipeline_index];
+            SetShaderPass( cmdq, pipeline.shader );
+            BindResources( cmdq, pipeline.resources );
+            RDIHardwareState hw_state = AcquireHardwareState( dev, &impl->managed_resources, pipeline.hw_state_desc );
+            SetHardwareState( cmdq, hw_state );
+            SetTopology( cmdq, pipeline.topology );
+            
+            state.pipeline = cmd.pipeline_index;
+        }
+
         const GeometryData& geometry = impl->geometry_data[cmd.geometry_index];
-        const InstanceInfo& instance_info = impl->instance_info[cmd.instance_index];
+        if( state.geometry != cmd.geometry_index )
+        {
+            SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.vertices, 32, 1, RDIEPipeline::ALL_STAGES_MASK );
+            SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.indices, 40, 1, RDIEPipeline::ALL_STAGES_MASK );
 
-        ChangeRenderTargets( cmdq, (RDITextureRW*)target._color_textures, target._nb_color_textures, target._depth_texture );
-        SetShaderPass( cmdq, pipeline.shader );
-        BindResources( cmdq, pipeline.resources );
-        
-        RDIHardwareState hw_state = AcquireHardwareState( dev, &impl->managed_resources, pipeline.hw_state_desc );
-        SetHardwareState( cmdq, hw_state );
-        SetTopology( cmdq, pipeline.topology );
+            state.geometry = cmd.geometry_index;
+        }
+        const InstanceInfo& instance_info = impl->instance_info[cmd.instance_index];
+        const shader::DrawRange range = geometry.draw_range;
 
         shader::DrawCallData draw_call;
         draw_call.target_index = cmd.target_index;
@@ -513,22 +551,10 @@ void LowRenderer::Flush( RDICommandQueue* cmdq, RDIDevice* dev )
         draw_call.vstream_begin = cmd.geometry_layout_first_index;
         draw_call.vstream_count = cmd.geometry_layout_nb_streams;
         draw_call.first_instance_index = instance_info.begin_index;
-        draw_call.draw_range = geometry.draw_range;
+        draw_call.draw_range = range;
         UpdateCBuffer( cmdq, impl->gpu_resources.draw_call, &draw_call );
 
-        SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.vertices, 32, 1, RDIEPipeline::ALL_STAGES_MASK );
-        SetResourcesRO( cmdq, (RDIBufferRO*)&geometry.indices, 40, 1, RDIEPipeline::ALL_STAGES_MASK );
-
-        const shader::DrawRange range = geometry.draw_range;
-
-        if( geometry.indices.id )
-        {
-            DrawIndexedInstanced( cmdq, range.count, range.begin, instance_info.count, range.base_vertex );
-        }
-        else
-        {
-            DrawInstanced( cmdq, range.count, range.begin, instance_info.count );
-        }
+        DrawInstanced( cmdq, range.count, range.begin, instance_info.count );
     }
 
     Clear( impl );
@@ -589,9 +615,7 @@ LowRenderer::Pipeline& LowRenderer::Pipeline::Topology( const RDIETopology::Enum
 }
 
 // 
-LowRenderer::Target::Target() 
-    : _nb_color_textures( 0 )
-{}
+LowRenderer::Target::Target() = default;
 
 LowRenderer::Target::Target( const RDITextureRW* ctex, u32 nb_ctex, RDITextureDepth dtex /*= RDITextureDepth() */ )
 {
@@ -607,6 +631,29 @@ LowRenderer::Target::Target( RDITextureDepth dtex )
 {
     _depth_texture = dtex;
     _nb_color_textures = 0;
+}
+
+LowRenderer::Target::Target( RDIXRenderTarget* rtarget, IncludeDepth depth )
+{
+    _nb_color_textures = ColorTextures( _color_textures, rtarget );
+    if( depth == IncludeDepth::YES )
+    {
+        _depth_texture = TextureDepth( rtarget );
+    }
+}   
+
+LowRenderer::Target& LowRenderer::Target::ClearColor( color32_t color )
+{
+    _flag_clear_color = 1;
+    _clear_color = color;
+    return *this;
+}
+
+LowRenderer::Target& LowRenderer::Target::ClearDepth( f32 value )
+{
+    _flag_clear_depth = 1;
+    _clear_depth = value;
+    return *this;
 }
 
 LowRenderer::Geometry::Geometry()

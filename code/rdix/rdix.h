@@ -86,6 +86,7 @@ void			  BindRenderTarget( RDICommandQueue* cmdq, RDIXRenderTarget* renderTarget
 void			  BindRenderTarget( RDICommandQueue* cmdq, RDIXRenderTarget* renderTarget, uint8_t color_texture_mask, bool use_depth );
 void			  BindRenderTarget( RDICommandQueue* cmdq, RDIXRenderTarget* renderTarget );
 RDITextureRW	  Texture( RDIXRenderTarget* rtarget, uint32_t index );
+u32               ColorTextures( RDITextureRW output[cRDI_MAX_RENDER_TARGETS], RDIXRenderTarget* rtarget );
 RDITextureDepth   TextureDepth( RDIXRenderTarget* rtarget );
 
 // --- RenderSource

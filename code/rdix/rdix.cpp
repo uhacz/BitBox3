@@ -586,6 +586,16 @@ RDITextureRW Texture( RDIXRenderTarget * rtarget, uint32_t index )
 	return rtarget->color_textures[index];
 }
 
+u32 ColorTextures( RDITextureRW output[cRDI_MAX_RENDER_TARGETS], RDIXRenderTarget* rtarget )
+{
+    for( u32 i = 0; i < rtarget->num_color_textures; ++i )
+    {
+        output[i] = rtarget->color_textures[i];
+    }
+
+    return rtarget->num_color_textures;
+}
+
 RDITextureDepth TextureDepth( RDIXRenderTarget * rtarget )
 {
 	return rtarget->depth_texture;

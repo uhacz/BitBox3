@@ -4,12 +4,14 @@
 #include "../../rdi_backend/rdi_backend_type.h"
 #include "../../rdix/rdix_type.h"
 #include "../../util/camera.h"
+#include "../../util/color.h"
 
 #include "../../rdix/rdix_shader_interop.h"
 namespace shader
 {
     #include <shaders/hlsl/vertex_layout.h>
     #include <shaders/hlsl/view_data.h>
+
 }//
 
 struct RDIXPipeline;
@@ -77,13 +79,23 @@ struct LowRenderer
 
     struct Target
     {
+        enum class IncludeDepth { YES, NO };
+        
         Target();
+        Target( RDIXRenderTarget* rtarget, IncludeDepth depth );
         Target( const RDITextureRW* ctex, u32 nb_ctex, RDITextureDepth dtex = RDITextureDepth() );
         Target( RDITextureDepth dtex );
 
+        Target& ClearColor( color32_t color );
+        Target& ClearDepth( f32 value );
+
         RDITextureRW _color_textures[cRDI_MAX_RENDER_TARGETS];
         RDITextureDepth _depth_texture;
-        u32 _nb_color_textures;
+        u16 _nb_color_textures = 0;
+        u8 _flag_clear_color = 0;
+        u8 _flag_clear_depth = 0;
+        color32_t _clear_color;
+        f32 _clear_depth;
     };
 
     struct DrawCmd

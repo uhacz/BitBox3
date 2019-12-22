@@ -7,18 +7,18 @@
 #include "view_data.h"
 #include "common.h"
 
-StructuredBuffer<RenderTargetData>  g_target    : TSLOT( 0 );
-StructuredBuffer<CameraViewData>    g_camera    : TSLOT( 1 );
-StructuredBuffer<float4x4>          g_matrix    : TSLOT( 2 );
-StructuredBuffer<VertexStream>      g_vstream   : TSLOT( 3 );
+shared StructuredBuffer<RenderTargetData>  _target    : register( t0 );
+shared StructuredBuffer<CameraViewData>    _camera    : register( t1 );
+shared StructuredBuffer<float4x4>          _matrix    : register( t2 );
+shared StructuredBuffer<VertexStream>      _vstream   : register( t3 );
 
-shared cbuffer DrawCallDataCB : BSLOT( 16 )
+shared cbuffer _DrawCallDataCB : register( b0 )
 {
-    DrawCallData g_draw_call;
+    DrawCallData _draw_call;
 };
 
-ByteAddressBuffer g_vertices    : TSLOT( 32 );
-ByteAddressBuffer g_indices     : TSLOT( 40 );
+ByteAddressBuffer _vertices    : register( t32 );
+ByteAddressBuffer _indices     : register( t40 );
 
 struct in_VS
 {
@@ -29,7 +29,8 @@ struct in_VS
 struct in_PS
 {
     float4 h_pos	: SV_Position;
-	float4 color	: TEXCOORD0;
+    float3 w_nrm    : NORMAL;
+	//float4 color	: TEXCOORD0;
 };
 
 struct out_PS
@@ -51,32 +52,38 @@ float4 colorU32toFloat4_RGBA( uint rgba )
 out_PS ps_main( in_PS input )
 {
 	out_PS OUT;
-    OUT.rgba = input.color;
+    //OUT.rgba = input.color;
+
+    float3 N = normalize( input.w_nrm );
+    float d = saturate( dot( N, normalize( float3(1, 1, 1) ) ) );
+
+    OUT.rgba = float4(d.xxx, 1);
     return OUT;
 }
 
-#define POS_ATTRIB 0
-#define COLOR_ATTRIB 1
+#define POSITION_ATTRIB 0
+#define NORMAL_ATTRIB 1
 
 in_PS vs_main( uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID )
 {
     in_PS output;
     
-    const uint instance_index = g_draw_call.first_instance_index + instance_id;
-    matrix wm = g_matrix[instance_index];
+    const uint instance_index = _draw_call.first_instance_index + instance_id;
+    matrix wm = _matrix[instance_index];
 
-    uint colorU32 = asuint( wm[3][3] );
-    wm[3][3] = 1.0f;
+    VertexStream pos_stream = _vstream[_draw_call.vstream_begin];
 
-    VertexStream pos_stream = g_vstream[g_draw_call.vstream_begin];
-
-    uint vertex_index = LoadVertexIndex( g_draw_call.draw_range, vertex_id, g_indices );
-    float3 pos_ls = VertexLoad3F( pos_stream, POS_ATTRIB, vertex_index, g_vertices );
-
-    CameraViewData camera_data = g_camera[g_draw_call.camera_index];
+    uint vertex_index = LoadVertexIndex( _draw_call.draw_range, vertex_id, _indices );
+    float3 pos_ls = VertexLoad3F( pos_stream, POSITION_ATTRIB, vertex_index, _vertices );
+    float3 nrm_ls = VertexLoad3F( pos_stream, NORMAL_ATTRIB, vertex_index, _vertices );
+    
+    CameraViewData camera_data = _camera[_draw_call.camera_index];
 
     float4 world_pos = mul( wm, float4(pos_ls, 1.0) );
+    float3 world_nrm = mul( (float3x3)wm, nrm_ls );
+
     output.h_pos = mul( camera_data.view_proj_api, world_pos );
-    output.color = colorU32toFloat4_RGBA( colorU32 );
+    output.w_nrm = world_nrm;
+    //output.color = colorU32toFloat4_RGBA( colorU32 );
     return output;
 }
