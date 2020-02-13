@@ -92,5 +92,8 @@
     <ClInclude Include="gfx\gfx_utils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="system_util.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

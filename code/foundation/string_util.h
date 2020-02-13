@@ -18,7 +18,7 @@ namespace string
 
 struct string_t
 {
-    static constexpr unsigned MAX_STATIC_LENGTH = 15;
+    static constexpr unsigned MAX_STATIC_LENGTH = 31;
     static constexpr unsigned MAX_STATIC_SIZE = MAX_STATIC_LENGTH + 1;
     BXIAllocator* _allocator = nullptr;
     union

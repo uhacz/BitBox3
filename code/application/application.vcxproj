@@ -69,6 +69,7 @@
     <ClInclude Include="application.h" />
     <ClInclude Include="ride\low_rendering.h" />
     <ClInclude Include="ride\ride_app.h" />
+    <ClInclude Include="ride\vertex_format.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="application.cpp" />

@@ -24,6 +24,9 @@
     <ClInclude Include="ride\low_rendering.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ride\vertex_format.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ride\ride_app.cpp">

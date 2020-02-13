@@ -72,9 +72,15 @@
     <ProjectReference Include="..\foundation\foundation.vcxproj">
       <Project>{81e2ec47-feda-4c4d-a6f7-493c4b92d2ff}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\job\job.vcxproj">
+      <Project>{ae8ffaf5-6718-4c69-ac93-4f609934f7ec}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\util\util.vcxproj">
       <Project>{dad0a7d3-3c93-4a28-abb9-cee0e38f18bf}</Project>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="soa.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

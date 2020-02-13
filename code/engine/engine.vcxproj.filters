@@ -18,9 +18,18 @@
     <ClInclude Include="low_level.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="resources.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="filesys.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="low_level.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="resources.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

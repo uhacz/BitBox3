@@ -10,6 +10,8 @@
 #include "time.h"
 #include "util/color.h"
 #include "low_rendering.h"
+#include "../engine/resources.h"
+#include "vertex_format.h"
 
 #include <string.h>
 #include "util/grid.h"
@@ -43,12 +45,6 @@ static LowRenderer::Geometry _box;
 static LowRenderer::Geometry _sphere;
 static LowRenderer::GeometryLayout _geo_layout;
 
-struct VertexPN
-{
-    vec3_t pos;
-    vec3_t nrm;
-};
-
 void ToGeometry( LowRenderer::Geometry* out_geo, LowRenderer::GeometryLayout* out_layout, RDIDevice* dev, const poly_shape_t& shape, BXIAllocator* allocator )
 {
     LowRenderer::Geometry& geo = out_geo[0];
@@ -80,9 +76,7 @@ void ToGeometry( LowRenderer::Geometry* out_geo, LowRenderer::GeometryLayout* ou
     BX_FREE0( allocator, vertices );
     if( out_layout )
     {
-        shader::VertexStream* stream = out_layout->AddStream();
-        shader::AddAttrib( stream, RDIFormat::Float3() );
-        shader::AddAttrib( stream, RDIFormat::Float3() );
+        VertexPN::SetAttribs( out_layout->AddStream() );
     }
 }
 
@@ -95,7 +89,8 @@ void DestroyGeometry( LowRenderer::Geometry* geo )
 bool RideApplication::Startup( int argc, const char** argv, BXWindow* win, BXIAllocator* allocator )
 {
     ENGLowLevel::Startup( &_e, argc, argv, win, allocator );
-    
+    RESManager::StartUp( allocator );
+
     { 
         RDIXRenderTargetDesc rtdesc( 1920, 1080, 1 );
         rtdesc.Texture( Framebuffer::FINAL, RDIFormat::Float4() );
@@ -152,6 +147,8 @@ void RideApplication::Shutdown( BXIAllocator* allocator )
     LowRenderer::ShutDown( &low_rnd );
     GFXUtils::ShutDown( &gfx_utils, _e.rdidev );
     DestroyRenderTarget( _e.rdidev, &gfx_framebuffer.rtarget );
+
+    RESManager::ShutDown();
     ENGLowLevel::Shutdown( &_e );
 }
 
@@ -229,7 +226,7 @@ bool RideApplication::Update( BXWindow* win, unsigned long long deltaTimeUS, BXI
     mat44_t boxes[nb_instances];
     mat44_t spheres[nb_instances];
 
-    const f32 time_s = BXTime::Micro_2_Sec( _time_us );
+    const f32 time_s = (f32)BXTime::Micro_2_Sec( _time_us );
     const mat44_t rotx = mat44_t::rotationx( time_s );
     const mat44_t roty = mat44_t::rotationy( time_s );
 

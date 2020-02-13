@@ -98,6 +98,7 @@
     <ClInclude Include="random\random.h" />
     <ClInclude Include="range_splitter.h" />
     <ClInclude Include="signal_filter.h" />
+    <ClInclude Include="system_util.h" />
     <ClInclude Include="voxelizer\aabbtree.h" />
     <ClInclude Include="voxelizer\voxelize.h" />
   </ItemGroup>

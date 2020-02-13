@@ -88,6 +88,9 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\3rd_party\enkiTS\enkiTS.vcxproj">
+      <Project>{4786ba1c-b7a3-4d45-87f0-cad4c5aee50b}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\application\application.vcxproj">
       <Project>{b2aa19d3-a181-4e93-aee9-3663e30f30da}</Project>
     </ProjectReference>
@@ -102,6 +105,9 @@
     </ProjectReference>
     <ProjectReference Include="..\input\input.vcxproj">
       <Project>{15dae8e3-4c6a-4bd3-895f-546150f7f91e}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\job\job.vcxproj">
+      <Project>{ae8ffaf5-6718-4c69-ac93-4f609934f7ec}</Project>
     </ProjectReference>
     <ProjectReference Include="..\memory\memory.vcxproj">
       <Project>{9fb86e9a-ae7f-4295-a36b-0ead0df7d749}</Project>
